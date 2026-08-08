@@ -171,9 +171,15 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
+          # Recursive globs, not root-level ones. upload-artifact keeps the
+          # directory structure below the common root, so the launcher's
+          # bundles arrive as dmg/*.dmg, nsis/*.exe and so on — `*.dmg` at the
+          # top matches nothing, and action-gh-release treats "no match" as
+          # nothing to attach rather than as an error. v0.1.1 first went out
+          # with only the three zips because of exactly this.
           files: |
             frame-ferret-*.zip
-            *.dmg
-            *.exe
-            *.deb
-            *.rpm
+            **/*.dmg
+            **/*.exe
+            **/*.deb
+            **/*.rpm
