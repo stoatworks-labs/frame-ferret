@@ -89,7 +89,7 @@ Still to do here: a ten-minute soak, and audio actually verified.
 - OSC, with the padding bug from WebLinked already covered by a test
 - The av-launcher tray shell and `launcher.toml`
 
-## Phase 5 — ST 2110
+## Phase 5 — ST 2110  (video done)
 
 Sequenced by what the platform can actually support — see
 [02-st2110.md](02-st2110.md).

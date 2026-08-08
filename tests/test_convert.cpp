@@ -359,8 +359,15 @@ void unsupportedPairsFailLoudly() {
   PixelFormat of;
   int os;
   std::string err;
-  CHECK(!convert(src, PixelFormat::ycbcr422_10_pgroup, of, outRange, out, os, err));
+  // nv12 is 4:2:0 planar and deliberately not a destination this module
+  // produces — routing to it would throw away vertical chroma nothing
+  // downstream can recover.
+  CHECK(!convert(src, PixelFormat::nv12, of, outRange, out, os, err));
   CHECK(!err.empty());
+
+  // The 2110 pgroup, by contrast, IS supported now — it is the wire format of
+  // ST 2110-20.
+  CHECK(convert(src, PixelFormat::ycbcr422_10_pgroup, of, outRange, out, os, err));
 
   err.clear();
   VideoFrame empty;

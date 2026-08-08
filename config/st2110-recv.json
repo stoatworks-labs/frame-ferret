@@ -1,0 +1,9 @@
+{
+  "rate": "25",
+  "control": { "bind": "127.0.0.1", "port": 8740 },
+  "nodes": [
+    { "id": "v2110", "kind": "st2110", "label": "ST 2110-20 in", "target": "127.0.0.1:20001", "interface": "lo0", "width": 640, "height": 360, "rate": "25" },
+    { "id": "monitor", "kind": "preview", "width": 640, "height": 360 }
+  ],
+  "routes": { "monitor": "v2110" }
+}

@@ -72,7 +72,8 @@ Honest, and it will stay honest as this grows.
 | **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools |
 | **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
 | **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
-| ST 2110 | **Not started.** Designed only |
+| **ST 2110-20 send and receive** | **Built and verified against GStreamer's RFC 4175 implementation**, both directions, within 2 code values. Wide-profile sender, system-clocked — see below |
+| ST 2110-30 audio, -40 ancillary | **Not started** |
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
@@ -182,6 +183,26 @@ Getting there needed the conversion made three times faster. BGRA to v210 at
 1080p cost 26.6 ms — a 38 fps ceiling — so the card ran at 34 fps with a third
 of its ticks late. Folding the colour coefficients and then fusing RGB to v210
 past the shared intermediate took it to **12.7 ms**.
+
+**ST 2110-20, both directions, against an independent implementation.**
+GStreamer's `rtpvrawdepay` decoded 143 frames of Frame Ferret's stream with a
+worst channel error of **1 code value**; Frame Ferret decoded 196 frames from
+GStreamer's `rtpvrawpay` within **2**. ST 2110-20 is RFC 4175 with constraints,
+so a conformant RFC 4175 implementation is a real check rather than this repo
+agreeing with itself.
+
+2110 is also the **only** transport here that binds an interface properly and
+must: multicast send needs an explicit egress interface, and a join is keyed on
+the interface *index*, because two interfaces can hold the same address after a
+DHCP reshuffle. The SDP is served through the control API, since pasting one is
+how most 2110 equipment is configured.
+
+**What this is not.** It is a **wide-profile sender** (`a=TP=2110TPW`,
+declared honestly), clocked from the system monotonic clock rather than a PTP
+servo, and frames are never marked `ptpLocked`. Narrow profile needs hardware
+transmit pacing, and macOS has no supported hardware timestamping path at all.
+See [docs/02-st2110.md](docs/02-st2110.md) — that was known before a line was
+written and nothing since has changed it.
 
 Two constraints found while scoping, both written up in full because they
 shape everything downstream:

@@ -4,6 +4,7 @@
 #include "core/json.h"
 #include "net/interfaces.h"
 #include "transports/ndi.h"
+#include "transports/st2110.h"
 
 namespace ferret {
 
@@ -102,6 +103,15 @@ void ControlApi::handleState(HttpServer::Response& response) const {
       n.set("interface", json::Value(node.interfaceSelector));
     }
     if (!node.target.empty()) n.set("target", json::Value(node.target));
+
+    // The SDP is how a 2110 receiver is configured in practice — most
+    // equipment is set up by pasting one — so it belongs where an operator
+    // will look for it rather than in a log line they have already scrolled
+    // past.
+    if (node.kind == NodeKind::st2110) {
+      const std::string sdp = st2110Sdp(node);
+      if (!sdp.empty()) n.set("sdp", json::Value(sdp));
+    }
 
     const std::string failure = failureFor(node.id);
     n.set("available", json::Value(failure.empty()));

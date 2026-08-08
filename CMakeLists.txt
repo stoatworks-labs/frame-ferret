@@ -44,6 +44,8 @@ add_library(ferret_core STATIC
   src/transports/srt_socket.cpp
   src/transports/ffmpeg.cpp
   src/transports/srt.cpp
+  src/transports/st2110_rtp.cpp
+  src/transports/st2110.cpp
 )
 target_include_directories(ferret_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -174,7 +176,7 @@ endif()
 # ---------------------------------------------------------------------------
 enable_testing()
 
-foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt)
+foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt st2110)
   add_executable(test_${t} tests/test_${t}.cpp)
   target_link_libraries(test_${t} PRIVATE ferret_core)
   add_test(NAME ${t} COMMAND test_${t})

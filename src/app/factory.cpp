@@ -6,6 +6,7 @@
 #include "sinks/syphon.h"
 #include "transports/omt.h"
 #include "transports/srt.h"
+#include "transports/st2110.h"
 
 namespace ferret {
 
@@ -18,6 +19,7 @@ bool isImplemented(NodeKind kind) {
     case NodeKind::decklink:
     case NodeKind::sharedSurfaceOut:
     case NodeKind::srt:
+    case NodeKind::st2110:
       return true;
     default:
       return false;
@@ -93,6 +95,31 @@ bool buildNodes(const AppConfig& config, Engine& engine,
         auto sink = std::make_unique<PreviewSink>(node);
         previews.push_back(sink.get());
         engine.addSink(std::move(sink));
+        ++built;
+        break;
+      }
+
+      case NodeKind::st2110: {
+        bool usedAsSource = false;
+        for (const auto& [sinkId, sourceId] : config.routes) {
+          if (sourceId == node.id) usedAsSource = true;
+        }
+        if (usedAsSource) {
+          auto source = makeSt2110Source(node, reason);
+          if (!source) {
+            failures.push_back({node.id, reason});
+            continue;
+          }
+          engine.addSource(std::move(source),
+                           PixelFormat::ycbcr422_10_pgroup);
+        } else {
+          auto sink = makeSt2110Sink(node, reason);
+          if (!sink) {
+            failures.push_back({node.id, reason});
+            continue;
+          }
+          engine.addSink(std::move(sink));
+        }
         ++built;
         break;
       }

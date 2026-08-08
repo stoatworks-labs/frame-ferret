@@ -89,9 +89,19 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   started *after* Frame Ferret, which is the exact case the main-thread trap
   breaks. Frame received, colours and channel order correct.
 
-**Not written at all.** ST 2110, every capture source, DeckLink *capture*,
-Spout, the HTML output, the OS extensions, and the tray launcher. Do not
-describe any of it as working.
+- **ST 2110-20, both directions, verified against GStreamer's RFC 4175
+  payloader and depayloader** — 1 and 2 code values respectively. 2110-20 is
+  RFC 4175 with constraints, so GStreamer is a genuine independent check.
+  `st2110_rtp.*` is deliberately socket-free so the packetiser can be tested
+  exhaustively; `st2110.cpp` holds the UDP and multicast side.
+
+  It is a **wide-profile sender**, system-clocked, and says so in its SDP
+  (`a=TP=2110TPW`). Frames are never marked `ptpLocked`. Do not upgrade that
+  claim without hardware transmit pacing and a real PTP servo.
+
+**Not written at all.** ST 2110-30 audio and -40 ancillary, every capture
+source, DeckLink *capture*, Spout, the HTML output, the OS extensions, and the
+tray launcher. Do not describe any of it as working.
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
@@ -121,6 +131,14 @@ Carried forward from the fleet, because these will be hit again here.
 - **Pixel formats travel with frames; do not add a BGRA normalisation step.**
   It is the one architectural difference from oxbow and WebLinked and it exists
   so the 2110 and DeckLink paths keep their 10 bits. See the architecture doc.
+- **The RTP marker bit ends a frame.** Get it wrong and every frame arrives one
+  frame late — the picture is perfect and the latency is not.
+- **RFC 4175 line numbers and pixel offsets are 1-based and in PIXELS**, while
+  everything internal is 0-based and in bytes. Both conversions are in
+  `st2110_rtp.cpp` and both are covered by round-trip tests at awkward widths.
+- **Lost 2110 packets must tear a frame, never discard it.** A receiver that
+  drops a whole frame for one missing packet produces a black flash, which is
+  far more visible than a torn line.
 - **v210 and the 2110-20 pgroup are different 10-bit packings** — 6 px/16 B
   little-endian versus 2 px/5 B big-endian. Confusing them gives correct
   geometry and wrong colour, which survives a long time before anyone notices.

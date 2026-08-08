@@ -301,6 +301,57 @@ void fusedRgbToV210(const uint8_t* src, int width, bool bgra,
   }
 }
 
+// --- ST 2110-20 / RFC 4175 pgroup ------------------------------------------
+//
+// 10-bit YCbCr 4:2:2: two pixels in five bytes, as one 40-bit big-endian run of
+// four 10-bit samples — Cb, Y0, Cr, Y1. Nothing is byte-aligned except the
+// group itself.
+//
+// This is a DIFFERENT packing from v210, which is 6 pixels in 16 bytes,
+// little-endian, with two unused bits per word. The two are easy to confuse
+// because both are "10-bit 4:2:2", and confusing them gives a picture with
+// correct geometry and wrong colour — which survives casual inspection.
+
+void readPgroup(const uint8_t* src, int width, Row422& out) {
+  const int groups = (width + 1) / 2;
+  for (int g = 0; g < groups; ++g) {
+    const uint8_t* p = src + static_cast<size_t>(g) * 5;
+    const uint16_t cb = static_cast<uint16_t>((p[0] << 2) | (p[1] >> 6));
+    const uint16_t y0 =
+        static_cast<uint16_t>(((p[1] & 0x3F) << 4) | (p[2] >> 4));
+    const uint16_t cr =
+        static_cast<uint16_t>(((p[2] & 0x0F) << 6) | (p[3] >> 2));
+    const uint16_t y1 = static_cast<uint16_t>(((p[3] & 0x03) << 8) | p[4]);
+
+    const int x = g * 2;
+    if (x < width) out.y[x] = y0;
+    if (x + 1 < width) out.y[x + 1] = y1;
+    if (g < static_cast<int>(out.cb.size())) {
+      out.cb[g] = cb;
+      out.cr[g] = cr;
+    }
+  }
+}
+
+void writePgroup(const Row422& in, int width, uint8_t* dst) {
+  const int groups = (width + 1) / 2;
+  const int chromaCount = static_cast<int>(in.cb.size());
+  for (int g = 0; g < groups; ++g) {
+    const int x = g * 2;
+    const uint16_t y0 = x < width ? in.y[x] : 0;
+    const uint16_t y1 = (x + 1) < width ? in.y[x + 1] : y0;
+    const uint16_t cb = g < chromaCount ? in.cb[g] : 512;
+    const uint16_t cr = g < chromaCount ? in.cr[g] : 512;
+
+    uint8_t* p = dst + static_cast<size_t>(g) * 5;
+    p[0] = static_cast<uint8_t>(cb >> 2);
+    p[1] = static_cast<uint8_t>(((cb & 0x03) << 6) | (y0 >> 4));
+    p[2] = static_cast<uint8_t>(((y0 & 0x0F) << 4) | (cr >> 6));
+    p[3] = static_cast<uint8_t>(((cr & 0x3F) << 2) | (y1 >> 8));
+    p[4] = static_cast<uint8_t>(y1 & 0xFF);
+  }
+}
+
 void readBgraLike(const uint8_t* src, int width, bool bgra,
                   const FixedCoeffs& c, Row422& out) {
   // Chroma is averaged across each pair. The colour transform is linear, so
@@ -473,7 +524,8 @@ LumaCoefficients coefficientsFor(ColourSpace c) {
 
 bool canConvert(PixelFormat from, PixelFormat to) {
   auto ok = [](PixelFormat f) {
-    return isRgb32(f) || isPacked8(f) || f == PixelFormat::v210;
+    return isRgb32(f) || isPacked8(f) || f == PixelFormat::v210 ||
+           f == PixelFormat::ycbcr422_10_pgroup;
   };
   return ok(from) && ok(to);
 }
@@ -534,6 +586,9 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
       case PixelFormat::uyvy8: readPacked8(sp, src.width, true, row); break;
       case PixelFormat::yuy2_8: readPacked8(sp, src.width, false, row); break;
       case PixelFormat::v210: readV210(sp, src.width, row); break;
+      case PixelFormat::ycbcr422_10_pgroup:
+        readPgroup(sp, src.width, row);
+        break;
       case PixelFormat::bgra8:
         readBgraLike(sp, src.width, true, coeffs, row);
         break;
@@ -550,6 +605,9 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
       case PixelFormat::uyvy8: writePacked8(row, src.width, true, dp); break;
       case PixelFormat::yuy2_8: writePacked8(row, src.width, false, dp); break;
       case PixelFormat::v210: writeV210(row, src.width, dp); break;
+      case PixelFormat::ycbcr422_10_pgroup:
+        writePgroup(row, src.width, dp);
+        break;
       case PixelFormat::bgra8:
         writeBgraLike(row, src.width, true, coeffs, dp);
         break;
