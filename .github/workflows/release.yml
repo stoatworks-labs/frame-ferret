@@ -1,0 +1,123 @@
+# Tag v* → build macOS (universal), Windows x64 and Linux x64, zip each with the
+# licence, README and example configs, and attach to a draft GitHub release.
+#
+# Modelled on oxbow's, which is the closest analogue in the fleet: a console app
+# with a web control page, so a zip is the right shape until it grows a tray
+# shell. Linux is included because Frame Ferret builds and self-tests there,
+# where oxbow does not.
+#
+# What a downloaded build can and cannot do, which matters because it is not
+# obvious from the filename: hosted runners have no NDI, OMT, DeckLink or SRT
+# libraries, and every one of those is loaded at run time rather than linked —
+# so a downloaded build reports each as unavailable until the operator installs
+# it, rather than failing to start. DeckLink is the exception that is compiled
+# out entirely, because its SDK is needed at build time and is not ours to
+# redistribute.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macos-universal
+          - os: windows-latest
+            name: windows-x86_64
+          - os: ubuntu-latest
+            name: linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: |
+          EXTRA=""
+          # Must be set at configure time, or "universal" ships arm64 only.
+          if [[ "${{ matrix.name }}" == macos-* ]]; then
+            EXTRA='-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64'
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release $EXTRA
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --build-config Release
+
+      - name: Self test
+        shell: bash
+        run: |
+          if [ -f build/frame-ferret ]; then
+            ./build/frame-ferret selftest
+          else
+            ./build/Release/frame-ferret.exe selftest
+          fi
+
+      - name: Verify architectures (macOS)
+        if: startsWith(matrix.name, 'macos')
+        # Not `lipo … | grep -q`: Actions runs bash with `-o pipefail`, and a
+        # `grep -q` that FINDS its match exits immediately, so lipo takes
+        # SIGPIPE and the pipeline reports failure — failing the release on a
+        # perfectly good universal binary. The match is also deliberately not
+        # order-dependent; lipo makes no promise about the order it lists in.
+        run: |
+          __archs=$( lipo -archs build/frame-ferret )
+          case "$__archs" in
+            *x86_64*arm64*|*arm64*x86_64*) echo "universal: $__archs" ;;
+            *) echo "expected a universal binary, got: $__archs"; exit 1 ;;
+          esac
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          STAGE="frame-ferret-$VERSION-${{ matrix.name }}"
+          mkdir "$STAGE"
+          if [[ -f build/Release/frame-ferret.exe ]]; then
+            cp build/Release/frame-ferret.exe "$STAGE/"
+          else
+            cp build/frame-ferret "$STAGE/"
+          fi
+          cp README.md LICENSE "$STAGE/"
+          mkdir "$STAGE/config"
+          cp config/*.json "$STAGE/config/"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            7z a "$STAGE.zip" "$STAGE"
+          else
+            zip -r "$STAGE.zip" "$STAGE"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frame-ferret-${{ matrix.name }}
+          path: frame-ferret-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      # Draft, deliberately: the fleet's local auto-signer re-signs and
+      # re-uploads the macOS artefact after the release appears, and the
+      # download links are generated from the assets that end up published.
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: frame-ferret-*.zip
