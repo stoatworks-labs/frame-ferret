@@ -20,7 +20,15 @@ struct BarColour {
 
 const std::vector<BarColour>& colourBars75();
 
-/// A synthetic source: 75% colour bars with a moving marker.
+/// The tone the test pattern emits alongside the bars: 1 kHz at -20 dBFS, the
+/// broadcast line-up reference. Exposed so a test can assert against the same
+/// numbers the generator uses rather than restating them.
+constexpr double kToneHz = 1000.0;
+constexpr double kToneAmplitude = 0.1;  // -20 dBFS
+constexpr int kToneSampleRate = 48000;
+constexpr int kToneChannels = 2;
+
+/// A synthetic source: 75% colour bars with a moving marker, plus a 1 kHz tone.
 ///
 /// This exists so the entire frame path — router, conversion, pacing, sinks —
 /// can be proven with no SDK, no network and no hardware. Every other source in

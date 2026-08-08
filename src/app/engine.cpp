@@ -84,6 +84,9 @@ void Engine::loop() {
       // correct for any source slower than the loop. A source that reports
       // itself disconnected drops it, so the router emits black rather than
       // holding a frozen picture.
+      // Audio, once, before any sink is served.
+      entry.audio = entry.source->takeAudio();
+
       const bool connected = entry.source->connected();
       if (!connected) entry.hasFrame = false;
       router_.setSourceConnected(entry.source->id(), connected && entry.hasFrame);
@@ -120,7 +123,7 @@ void Engine::loop() {
 void Engine::serveTick(int64_t tick) {
   const auto plan = router_.plan();
 
-  uint64_t delivered = 0, black = 0, conversions = 0;
+  uint64_t delivered = 0, black = 0, conversions = 0, audioDelivered = 0;
   std::map<std::string, std::string> reasons;
 
   for (const auto& action : plan) {
@@ -155,6 +158,15 @@ void Engine::serveTick(int64_t tick) {
 
     const VideoFrame& frame = entry.latest.frame();
     reasons[action.sinkId].clear();
+
+    // Audio follows the same crosspoint as video — one route, both media.
+    // Deliberately not sent on a `black` action: video going quiet is a fault
+    // downstream equipment must recover from, which is why black frames are
+    // still emitted, but audio going quiet *is* silence and needs no filler.
+    if (entry.audio) {
+      sink->sendAudio(*entry.audio);
+      ++audioDelivered;
+    }
 
     if (action.what == RouteAction::What::copy) {
       sink->send(frame);
@@ -193,6 +205,7 @@ void Engine::serveTick(int64_t tick) {
   counters_.framesDelivered += delivered;
   counters_.blackDelivered += black;
   counters_.conversions += conversions;
+  counters_.audioFramesDelivered += audioDelivered;
   reasons_.swap(reasons);
 }
 

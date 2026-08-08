@@ -184,6 +184,13 @@ Getting there needed the conversion made three times faster. BGRA to v210 at
 of its ticks late. Folding the colour coefficients and then fusing RGB to v210
 past the shared intermediate took it to **12.7 ms**.
 
+**Audio now follows the same crosspoint as video.** The test pattern emits a
+1 kHz tone at -20 dBFS alongside the bars, and it travels the routes the video
+does. Across NDI: 4478 audio frames sent, and a second Frame Ferret received
+and routed 287 of them back through libndi's own encode and decode. Both ends
+are this codebase, so that is not a fully independent check — but libndi sits
+in the middle, and a wrong planar layout would not survive it.
+
 **Screen capture, on this machine.** A display at 1280x720p30 gave 175 frames of
 real desktop content; a named window gave 136 frames with zero black; and two
 different regions of the same display captured as genuinely different pictures,

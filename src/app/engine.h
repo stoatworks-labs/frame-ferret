@@ -48,6 +48,7 @@ class Engine {
     uint64_t blackDelivered = 0;
     uint64_t conversions = 0;
     uint64_t lateTicks = 0;   ///< deadline already passed when we got there
+    uint64_t audioFramesDelivered = 0;
     double measuredFps = 0.0;
   };
   Counters counters() const;
@@ -77,6 +78,15 @@ class Engine {
     PixelFormat nativeFormat = PixelFormat::unknown;
     FrameBuffer latest;
     bool hasFrame = false;
+
+    /// Audio taken from this source this tick, if any.
+    ///
+    /// Taken **once per source per tick** and then handed to every sink routed
+    /// to it. `Source::takeAudio()` is destructive — it moves the pending
+    /// frame out — so calling it per sink would give the audio to whichever
+    /// sink happened to be served first and silence to the rest, which on a
+    /// two-output show is a fault nobody would think to look for.
+    std::unique_ptr<AudioFrame> audio;
   };
 
   Router router_;

@@ -71,6 +71,8 @@ void ControlApi::handleState(HttpServer::Response& response) const {
   c.set("conversions",
         json::Value(static_cast<int64_t>(counters.conversions)));
   c.set("lateTicks", json::Value(static_cast<int64_t>(counters.lateTicks)));
+  c.set("audioFrames",
+        json::Value(static_cast<int64_t>(counters.audioFramesDelivered)));
   c.set("measuredFps", json::Value(counters.measuredFps));
   state.set("counters", std::move(c));
 

@@ -31,6 +31,14 @@ class RecordingSink : public Sink {
     if (frame.data && frame.strideBytes > 0) lastByte = frame.data[0];
   }
 
+  void sendAudio(const AudioFrame& a) override {
+    ++audioFrames;
+    audioSamples += a.samplesPerChannel;
+    lastChannels = a.channels;
+    lastSampleRate = a.sampleRate;
+    if (!a.data.empty()) lastSample = a.data[0];
+  }
+
   void sendBlack() override {
     ++blacks;
     lastFormat = PixelFormat::unknown;
@@ -40,9 +48,58 @@ class RecordingSink : public Sink {
   std::vector<PixelFormat> accepts_;
   int frames = 0;
   int blacks = 0;
+  int audioFrames = 0;
+  int64_t audioSamples = 0;
+  int lastChannels = 0;
+  int lastSampleRate = 0;
+  float lastSample = 0.0f;
   PixelFormat lastFormat = PixelFormat::unknown;
   int lastWidth = 0;
   uint8_t lastByte = 0;
+};
+
+/// A source that produces audio as well as video, so the audio path can be
+/// driven without a real transport.
+class TonedSource : public Source {
+ public:
+  explicit TonedSource(std::string id) : id_(std::move(id)) {
+    pixels_.assign(16 * 8 * 4, 0x30);
+  }
+
+  const std::string& id() const override { return id_; }
+  bool connected() const override { return true; }
+
+  bool poll(unsigned,
+            const std::function<void(const VideoFrame&)>& onVideo) override {
+    VideoFrame f;
+    f.width = 16;
+    f.height = 8;
+    f.strideBytes = 16 * 4;
+    f.data = pixels_.data();
+    f.format = PixelFormat::bgra8;
+    if (onVideo) onVideo(f);
+
+    auto a = std::make_unique<AudioFrame>();
+    a->sampleRate = 48000;
+    a->channels = 2;
+    a->samplesPerChannel = 480;
+    a->data.assign(2 * 480, 0.25f);
+    pending_ = std::move(a);
+    ++produced_;
+    return true;
+  }
+
+  std::unique_ptr<AudioFrame> takeAudio() override {
+    return std::move(pending_);
+  }
+
+  int produced() const { return produced_; }
+
+ private:
+  std::string id_;
+  std::vector<uint8_t> pixels_;
+  std::unique_ptr<AudioFrame> pending_;
+  int produced_ = 0;
 };
 
 /// A source under the test's control: it produces only when told to, and can
@@ -309,6 +366,101 @@ void aSourceThatConnectsOnlyWhenPolledStillWorks() {
   CHECK_EQ(sink->lastByte, uint8_t{0x77});
 }
 
+/// Audio follows the same crosspoint as video.
+void audioReachesARoutedSink() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* sink = new RecordingSink("out", {});
+  engine.addSink(std::unique_ptr<Sink>(sink));
+
+  std::string err;
+  CHECK(engine.router().route("out", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 12);
+  const auto counters = engine.counters();
+  engine.stop();
+
+  CHECK(sink->audioFrames > 0);
+  CHECK_EQ(sink->lastChannels, 2);
+  CHECK_EQ(sink->lastSampleRate, 48000);
+  CHECK(sink->lastSample > 0.2f);
+  CHECK(counters.audioFramesDelivered > 0);
+}
+
+/// The bug this guards: `takeAudio()` moves the pending frame out, so taking it
+/// per sink would give the audio to whichever sink was served first and silence
+/// to every other. It must be taken once per source per tick and shared.
+void audioReachesEverySinkOnOneSource() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* a = new RecordingSink("a", {});
+  auto* b = new RecordingSink("b", {});
+  engine.addSink(std::unique_ptr<Sink>(a));
+  engine.addSink(std::unique_ptr<Sink>(b));
+
+  std::string err;
+  CHECK(engine.router().route("a", "tone", err));
+  CHECK(engine.router().route("b", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 12);
+  engine.stop();
+
+  CHECK(a->audioFrames > 0);
+  CHECK(b->audioFrames > 0);
+  // Both got roughly the same amount — not one starved.
+  const int lower = a->audioFrames < b->audioFrames ? a->audioFrames
+                                                    : b->audioFrames;
+  const int upper = a->audioFrames > b->audioFrames ? a->audioFrames
+                                                    : b->audioFrames;
+  CHECK(lower * 2 > upper);
+}
+
+/// An unrouted sink gets no audio, exactly as it gets no video.
+void anUnroutedSinkGetsNoAudio() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* sink = new RecordingSink("out", {});
+  engine.addSink(std::unique_ptr<Sink>(sink));
+
+  std::string err;
+  CHECK(engine.start(err));
+  waitForTicks(engine, 12);
+  engine.stop();
+
+  CHECK_EQ(sink->audioFrames, 0);
+  CHECK(sink->blacks > 0);
+}
+
+/// Muting silences audio as well as video. Video still emits black frames,
+/// because a stopped video output has to be re-locked downstream; audio simply
+/// stops, because silence *is* the correct filler.
+void muteSilencesAudio() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* sink = new RecordingSink("out", {});
+  engine.addSink(std::unique_ptr<Sink>(sink));
+
+  std::string err;
+  CHECK(engine.router().route("out", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 10);
+  CHECK(sink->audioFrames > 0);
+
+  engine.router().setMuted(true);
+  const int atMute = sink->audioFrames;
+  const int blacksAtMute = sink->blacks;
+  waitForTicks(engine, engine.counters().ticks + 12);
+  engine.stop();
+
+  // Audio stopped; video did not.
+  CHECK(sink->audioFrames <= atMute + 1);
+  CHECK(sink->blacks > blacksAtMute);
+}
+
 void startingWithNoSinksIsAnError() {
   Engine engine;
   std::string err;
@@ -351,6 +503,10 @@ void run() {
   aConvertRouteReallyConverts();
   muteMakesEverySinkBlackAndKeepsTheRoute();
   everyBlackCarriesAReason();
+  audioReachesARoutedSink();
+  audioReachesEverySinkOnOneSource();
+  anUnroutedSinkGetsNoAudio();
+  muteSilencesAudio();
   aSourceThatConnectsOnlyWhenPolledStillWorks();
   startingWithNoSinksIsAnError();
   anInvalidRateIsRejected();

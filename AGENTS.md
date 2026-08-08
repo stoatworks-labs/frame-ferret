@@ -99,6 +99,11 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   (`a=TP=2110TPW`). Frames are never marked `ptpLocked`. Do not upgrade that
   claim without hardware transmit pacing and a real PTP servo.
 
+- **Audio routed through the crosspoint**, with a 1 kHz tone in the test
+  pattern to drive it. 63 checks on the engine now. Verified across NDI as a
+  Frame Ferret round trip through libndi — **not** against an independent
+  receiver, because oxbow's probe has no audio support at all. Do not claim
+  more than that.
 - **Display, window, application and ROI capture (macOS), run on this
   machine.** ScreenCaptureKit. A display gave 175 frames of real content, a
   named window 136 with zero black, and two different regions captured as
@@ -163,6 +168,14 @@ Carried forward from the fleet, because these will be hit again here.
   receivers connect to a source that never sends.
 - **NDI's `BGRX_BGRA_flipped` receive format is Windows-only.** Elsewhere
   normalise rows at ingest.
+- **`Source::takeAudio()` is destructive.** Take it ONCE per source per tick in
+  the poll loop and share it with every routed sink — calling it per sink gives
+  the audio to whichever sink is served first and silence to the rest, which on
+  a two-output show is a fault nobody thinks to look for. Pinned by
+  `audioReachesEverySinkOnOneSource`.
+- **Audio is not sent on a `black` action, and that is deliberate.** Video going
+  quiet is a fault downstream equipment must recover from, which is why black
+  frames are still emitted; audio going quiet *is* silence and needs no filler.
 - **Screen Recording permission failing is INVISIBLE.** Without it SCStream
   starts successfully and delivers black frames forever — no error, no
   callback, no log line. `ScreenCapture::permitted()` checks up front by asking

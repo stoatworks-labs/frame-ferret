@@ -1,6 +1,7 @@
 #include "sources/test_pattern.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <thread>
 
@@ -71,14 +72,59 @@ class TestPatternSource : public Source {
     f.timestampNs = deadline;
     f.ptpLocked = false;
 
+    generateAudio();
+
     ++tick_;
     if (onVideo) onVideo(f);
     return true;
   }
 
+  std::unique_ptr<AudioFrame> takeAudio() override {
+    return std::move(pendingAudio_);
+  }
+
   int64_t tick() const { return tick_; }
 
  private:
+  /// One frame's worth of 1 kHz tone, planar float, phase-continuous across
+  /// frames.
+  ///
+  /// The phase accumulator is the point. Restarting the sine at zero every
+  /// frame produces a click at the frame rate — clearly audible, and a fault
+  /// that a spectrum check for "is there 1 kHz" would happily pass.
+  void generateAudio() {
+    const double rate = config_.rate.approx();
+    if (rate <= 0) return;
+
+    // Sample counts must come out to exactly the sample rate over one second,
+    // whatever the frame rate — computed from the tick so 59.94 does not
+    // accumulate an error the way a per-frame rounding would.
+    const int64_t nextTotal = static_cast<int64_t>(
+        (tick_ + 1) * kToneSampleRate * config_.rate.den / config_.rate.num);
+    const int64_t thisTotal = static_cast<int64_t>(
+        tick_ * kToneSampleRate * config_.rate.den / config_.rate.num);
+    const int samples = static_cast<int>(nextTotal - thisTotal);
+    if (samples <= 0) return;
+
+    auto audio = std::make_unique<AudioFrame>();
+    audio->sampleRate = kToneSampleRate;
+    audio->channels = kToneChannels;
+    audio->samplesPerChannel = samples;
+    audio->data.resize(static_cast<size_t>(kToneChannels) * samples);
+
+    const double step = 2.0 * M_PI * kToneHz / kToneSampleRate;
+    for (int i = 0; i < samples; ++i) {
+      const float value =
+          static_cast<float>(std::sin(phase_) * kToneAmplitude);
+      for (int c = 0; c < kToneChannels; ++c) {
+        audio->data[static_cast<size_t>(c) * samples + i] = value;
+      }
+      phase_ += step;
+      if (phase_ > 2.0 * M_PI) phase_ -= 2.0 * M_PI;
+    }
+    pendingAudio_ = std::move(audio);
+  }
+
   void drawBars() {
     const int n = static_cast<int>(kBars.size());
     for (int y = 0; y < config_.height; ++y) {
@@ -138,6 +184,8 @@ class TestPatternSource : public Source {
   int stride_ = 0;
   int64_t tick_ = 0;
   std::chrono::steady_clock::time_point start_;
+  double phase_ = 0.0;
+  std::unique_ptr<AudioFrame> pendingAudio_;
 };
 
 }  // namespace
