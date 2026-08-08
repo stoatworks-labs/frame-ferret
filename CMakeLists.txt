@@ -55,6 +55,12 @@ target_link_libraries(frame-ferret PRIVATE ferret_core)
 
 if(APPLE)
   target_link_libraries(frame-ferret PRIVATE "-framework CoreFoundation")
+elseif(WIN32)
+  # dbghelp is for the vendored diag's crash backtrace (SymInitialize /
+  # SymFromAddr). WebLinked hit exactly this and it is easy to miss because
+  # nothing else in the tree references it — the only symptom is LNK2019 at the
+  # final link of the executable, long after every object compiles cleanly.
+  target_link_libraries(frame-ferret PRIVATE dbghelp)
 elseif(UNIX)
   target_link_libraries(frame-ferret PRIVATE dl pthread)
 endif()
