@@ -6,17 +6,26 @@ past phase 0 exists.
 ## Phase 0 — the spine ✅ done
 
 Node model, crosspoint router, exact rational timing, pixel format model,
-interface enumeration, CLI. 190 checks passing. No video path.
+interface enumeration, CLI.
 
-## Phase 1 — one stream, end to end
+## Phase 1 — a running application ✅ done
 
-The goal is a single proven route through the whole program, not breadth.
+A synthetic route proven through the whole program.
 
-- `sources/` and `sinks/` factory plumbing from `NodeConfig`
-- **NDI in, NDI out**, runtime-loaded, bound to a chosen interface
+- Pixel conversion between BGRA/RGBA/UYVY/YUY2/v210, verified by pixel readback
 - The frame loop: tick from the rational, poll sources, execute the plan
-- Format conversion for the pairs the router marks `convert`
-- `run --config <file>` and a `selftest` that fails on all-black output
+- Config loading, and the factory that builds nodes from it
+- A test-pattern source and a preview sink
+- The HTTP control API and the crosspoint web page
+- `run --config <file>` and a `selftest` that fails on a frozen or black output
+
+416 checks. Measured: 9049 ticks at 49.99 fps, zero late, one action per sink
+per tick. Still **no real video** — the only source is synthetic.
+
+## Phase 1b — the first real stream
+
+- **NDI in, NDI out**, runtime-loaded, bound to a chosen interface
+- Audio through the router, not only video
 
 Done when NDI → NDI holds frame rate for ten minutes against an independent
 receiver, with the interface binding confirmed by `lsof`.

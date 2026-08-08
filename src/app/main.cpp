@@ -1,14 +1,27 @@
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include "app/config.h"
+#include "app/engine.h"
+#include "app/factory.h"
 #include "app/node.h"
 #include "app/router.h"
+#include "control/control_api.h"
+#include "control/http_server.h"
 #include "net/interfaces.h"
 
 namespace {
+
+std::atomic<bool> g_stop{false};
+
+void onSignal(int) { g_stop.store(true); }
 
 /// Bits per second needed for uncompressed ST 2110-20, so that `interfaces`
 /// can say whether a NIC is fast enough for the raster the operator wants.
@@ -81,19 +94,199 @@ int cmdKinds() {
   return 0;
 }
 
+/// Builds the engine from `config` and reports what could not be built.
+bool prepare(const ferret::AppConfig& config, ferret::Engine& engine,
+             std::vector<ferret::NodeFailure>& failures,
+             std::vector<ferret::PreviewSink*>& previews) {
+  std::string error;
+  if (!ferret::buildNodes(config, engine, failures, previews, error)) {
+    std::fprintf(stderr, "%s\n", error.c_str());
+    return false;
+  }
+  for (const auto& f : failures) {
+    std::fprintf(stderr, "  unavailable: %s — %s\n", f.id.c_str(),
+                 f.reason.c_str());
+  }
+  return true;
+}
+
+int cmdRun(const std::string& configPath) {
+  ferret::AppConfig config;
+  if (configPath.empty()) {
+    config = ferret::selftestConfig();
+    config.controlPort = 8740;
+    std::printf(
+        "No --config given, so running the built-in colour-bars "
+        "configuration.\n");
+  } else {
+    std::string error;
+    if (!ferret::loadConfigFile(configPath, &config, error)) {
+      std::fprintf(stderr, "%s\n", error.c_str());
+      return 1;
+    }
+  }
+
+  ferret::Engine engine;
+  std::vector<ferret::NodeFailure> failures;
+  std::vector<ferret::PreviewSink*> previews;
+  if (!prepare(config, engine, failures, previews)) return 1;
+
+  std::string error;
+  if (!engine.start(error)) {
+    std::fprintf(stderr, "%s\n", error.c_str());
+    return 1;
+  }
+
+  ferret::ControlApi api(engine, config, failures, previews);
+  ferret::HttpServer server;
+  if (config.controlPort > 0) {
+    if (!ferret::HttpServer::portAvailable(config.controlBind,
+                                           config.controlPort)) {
+      // Checked before binding because the usual cause is a second copy of
+      // this program already running, and that is worth saying plainly rather
+      // than leaving as a bind error.
+      std::fprintf(stderr,
+                   "control port %s:%d is already in use — is Frame Ferret "
+                   "already running?\n",
+                   config.controlBind.c_str(), config.controlPort);
+      engine.stop();
+      return 1;
+    }
+    if (!server.start(config.controlBind, config.controlPort,
+                      config.controlToken,
+                      [&api](const ferret::HttpServer::Request& request,
+                             ferret::HttpServer::Response& response) {
+                        api.handle(request, response);
+                      },
+                      error)) {
+      std::fprintf(stderr, "control server: %s\n", error.c_str());
+      engine.stop();
+      return 1;
+    }
+    std::printf("Control page: http://%s:%d/\n", config.controlBind.c_str(),
+                server.port());
+  }
+
+  std::signal(SIGINT, onSignal);
+  std::signal(SIGTERM, onSignal);
+  std::printf("Running at %s fps. Ctrl-C to stop.\n",
+              config.rate.label().c_str());
+
+  while (!g_stop.load()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  std::printf("\nStopping.\n");
+  server.stop();
+  engine.stop();
+
+  const auto counters = engine.counters();
+  std::printf("%llu ticks, %llu frames, %llu black, %llu late\n",
+              static_cast<unsigned long long>(counters.ticks),
+              static_cast<unsigned long long>(counters.framesDelivered),
+              static_cast<unsigned long long>(counters.blackDelivered),
+              static_cast<unsigned long long>(counters.lateTicks));
+  return 0;
+}
+
+/// Drives colour bars into a preview for a few seconds and checks that frames
+/// actually arrived, actually advanced, and were not black.
+///
+/// The "advanced" part is the one that matters: a frozen output passes any
+/// test that only counts frames, and freezing is the failure mode this whole
+/// program is built to avoid.
+int cmdSelftest() {
+  ferret::AppConfig config = ferret::selftestConfig();
+
+  ferret::Engine engine;
+  std::vector<ferret::NodeFailure> failures;
+  std::vector<ferret::PreviewSink*> previews;
+  if (!prepare(config, engine, failures, previews)) return 1;
+
+  if (previews.empty()) {
+    std::fprintf(stderr, "selftest: no preview sink was built\n");
+    return 1;
+  }
+
+  std::string error;
+  if (!engine.start(error)) {
+    std::fprintf(stderr, "selftest: %s\n", error.c_str());
+    return 1;
+  }
+
+  const int seconds = 3;
+  std::vector<uint8_t> first, last;
+
+  // Wait for the first real frame before sampling. Sampling immediately after
+  // start() catches the engine before its first tick, and an empty buffer then
+  // compares unequal to everything — which would make the "picture advanced"
+  // check below pass for the wrong reason forever.
+  bool gotFirst = false;
+  for (int i = 0; i < 200 && !gotFirst; ++i) {
+    gotFirst = previews[0]->encodeBmp(first);
+    if (!gotFirst) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  std::this_thread::sleep_for(std::chrono::seconds(seconds));
+  const bool gotLast = previews[0]->encodeBmp(last);
+
+  const auto counters = engine.counters();
+  const auto stats = previews[0]->stats();
+  engine.stop();
+
+  std::printf("ticks           %llu\n",
+              static_cast<unsigned long long>(counters.ticks));
+  std::printf("frames          %llu\n",
+              static_cast<unsigned long long>(counters.framesDelivered));
+  std::printf("black           %llu\n",
+              static_cast<unsigned long long>(counters.blackDelivered));
+  std::printf("late ticks      %llu\n",
+              static_cast<unsigned long long>(counters.lateTicks));
+  std::printf("measured fps    %.2f\n", counters.measuredFps);
+  std::printf("preview         %dx%d %s, %llu frames\n", stats.width,
+              stats.height, stats.format.c_str(),
+              static_cast<unsigned long long>(stats.frames));
+
+  int failed = 0;
+  auto check = [&failed](bool ok, const char* what) {
+    std::printf("  %s  %s\n", ok ? "PASS" : "FAIL", what);
+    if (!ok) ++failed;
+  };
+
+  const double expected = config.rate.approx() * seconds;
+  check(counters.framesDelivered > 0, "frames were delivered");
+  check(counters.blackDelivered == 0, "no black frames were delivered");
+  check(gotFirst && gotLast, "the preview produced an image");
+  check(counters.framesDelivered > expected * 0.8,
+        "frame rate held within 20% of nominal");
+  // The moving marker means two samples three seconds apart must differ. A
+  // frozen source passes every other check here, and freezing is the failure
+  // mode this whole program is built to avoid — so both samples must be real.
+  check(gotFirst && gotLast && first != last,
+        "the picture advanced between samples");
+
+  std::printf("%s\n", failed == 0 ? "selftest PASSED" : "selftest FAILED");
+  return failed == 0 ? 0 : 1;
+}
+
 int usage() {
   std::printf(
       "Frame Ferret %s — a virtual capture card.\n"
       "\n"
-      "Usage: frame-ferret <command>\n"
+      "Usage: frame-ferret <command> [options]\n"
       "\n"
-      "  interfaces   List the NICs available for binding, with link speed\n"
-      "  kinds        List node kinds and the directions each supports\n"
-      "  version      Print the version\n"
+      "  run [--config <file>]   Run the engine and serve the control page\n"
+      "  selftest                Drive colour bars through the frame path\n"
+      "  interfaces              List NICs available for binding, with speed\n"
+      "  kinds                   List node kinds and the directions each takes\n"
+      "  version                 Print the version\n"
       "\n"
-      "Not yet implemented: run, sources, uvc, selftest. See docs/ROADMAP.md\n"
-      "for what is built and what is not — nothing here has been run against\n"
-      "hardware yet.\n",
+      "`run` with no config serves the built-in colour-bars configuration on\n"
+      "http://127.0.0.1:8740/.\n"
+      "\n"
+      "Only the test pattern and preview nodes exist in this build. Every\n"
+      "transport, capture source and hardware output is designed but not\n"
+      "implemented — see docs/ROADMAP.md.\n",
       FERRET_VERSION);
   return 0;
 }
@@ -106,6 +299,20 @@ int main(int argc, char** argv) {
   const std::string cmd = argv[1];
   if (cmd == "interfaces") return cmdInterfaces();
   if (cmd == "kinds") return cmdKinds();
+  if (cmd == "selftest") return cmdSelftest();
+  if (cmd == "run") {
+    std::string configPath;
+    for (int i = 2; i < argc; ++i) {
+      const std::string arg = argv[i];
+      if ((arg == "--config" || arg == "-c") && i + 1 < argc) {
+        configPath = argv[++i];
+      } else {
+        std::fprintf(stderr, "unknown option: %s\n", arg.c_str());
+        return 1;
+      }
+    }
+    return cmdRun(configPath);
+  }
   if (cmd == "version") {
     std::printf("%s\n", FERRET_VERSION);
     return 0;

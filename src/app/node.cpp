@@ -15,6 +15,8 @@ const KindEntry kKinds[] = {
     {NodeKind::omt, "omt", true, true},
     {NodeKind::srt, "srt", true, true},
     {NodeKind::st2110, "st2110", true, true},
+    {NodeKind::testPattern, "test", true, false},
+    {NodeKind::preview, "preview", false, true},
     {NodeKind::displayCapture, "display", true, false},
     {NodeKind::windowCapture, "window", true, false},
     {NodeKind::applicationCapture, "application", true, false},

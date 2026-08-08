@@ -1,0 +1,50 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-14 is arm64. The Intel macOS runners were retired, so never
+          # add macos-13 back expecting it to work.
+          - os: macos-14
+            name: macOS
+          - os: ubuntu-latest
+            name: Linux
+          - os: windows-latest
+            name: Windows
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --build-config Release
+
+      # Runs the whole frame path — generator, router, conversion, pacing — and
+      # fails on a frozen or black output. The one check here that exercises
+      # the program rather than its parts.
+      - name: Self test
+        shell: bash
+        run: |
+          if [ -f build/frame-ferret ]; then
+            ./build/frame-ferret selftest
+          else
+            ./build/Release/frame-ferret.exe selftest
+          fi

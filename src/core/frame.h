@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "core/pixel_format.h"
@@ -82,8 +83,23 @@ struct AncillaryFrame {
 class FrameBuffer {
  public:
   FrameBuffer() = default;
+
+  // Non-copyable: `frame_.data` points into `storage_`, so a copy would need
+  // to re-point it and a defaulted one would leave two objects sharing a
+  // dangling pointer.
   FrameBuffer(const FrameBuffer&) = delete;
   FrameBuffer& operator=(const FrameBuffer&) = delete;
+
+  // Movable, and these must be written out. Declaring the copy operations at
+  // all suppresses the implicit move ones, which makes this type neither
+  // copyable nor movable — and that surfaces far from here as a wall of
+  // template errors about Cpp17MoveInsertable when something holds one in a
+  // std::vector.
+  FrameBuffer(FrameBuffer&& other) noexcept { moveFrom(std::move(other)); }
+  FrameBuffer& operator=(FrameBuffer&& other) noexcept {
+    if (this != &other) moveFrom(std::move(other));
+    return *this;
+  }
 
   /// Resizes if the geometry changed, otherwise reuses the existing storage.
   void assign(const VideoFrame& src);
@@ -92,6 +108,17 @@ class FrameBuffer {
   bool empty() const { return storage_.empty(); }
 
  private:
+  /// Moves `other` into this one and re-points `frame_.data` at our own
+  /// storage. The re-point is the whole reason this cannot be defaulted: the
+  /// moved-from vector's buffer becomes ours, but the pointer copied along
+  /// with the VideoFrame still refers to it by the old object's address.
+  void moveFrom(FrameBuffer&& other) {
+    frame_ = other.frame_;
+    storage_ = std::move(other.storage_);
+    frame_.data = storage_.empty() ? nullptr : storage_.data();
+    other.frame_.data = nullptr;
+  }
+
   VideoFrame frame_;
   std::vector<uint8_t> storage_;
 };

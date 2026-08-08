@@ -25,6 +25,12 @@ add_library(ferret_core STATIC
   src/core/json.cpp
   src/core/pixel_format.cpp
   src/core/rational.cpp
+  src/core/convert.cpp
+  src/sources/test_pattern.cpp
+  src/sinks/preview.cpp
+  src/app/config.cpp
+  src/app/engine.cpp
+  src/app/factory.cpp
   src/app/node.cpp
   src/app/router.cpp
   src/net/interfaces.cpp
@@ -40,6 +46,8 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(frame-ferret
   src/app/main.cpp
+  src/control/control_api.cpp
+  src/control/http_server.cpp
   src/core/dylib.cpp
   src/diag/diag.cpp
 )
@@ -56,7 +64,7 @@ endif()
 # ---------------------------------------------------------------------------
 enable_testing()
 
-foreach(t router rational pixel_format interfaces)
+foreach(t router rational pixel_format interfaces convert config engine web_assets)
   add_executable(test_${t} tests/test_${t}.cpp)
   target_link_libraries(test_${t} PRIVATE ferret_core)
   add_test(NAME ${t} COMMAND test_${t})

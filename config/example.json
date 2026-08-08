@@ -1,0 +1,30 @@
+{
+  "rate": "50",
+
+  "control": {
+    "bind": "127.0.0.1",
+    "port": 8740
+  },
+
+  "nodes": [
+    {
+      "id": "bars",
+      "kind": "test",
+      "label": "Colour bars",
+      "width": 1920,
+      "height": 1080,
+      "rate": "50"
+    },
+    {
+      "id": "monitor",
+      "kind": "preview",
+      "label": "Monitor",
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+
+  "routes": {
+    "monitor": "bars"
+  }
+}

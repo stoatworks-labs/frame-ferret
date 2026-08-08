@@ -13,24 +13,35 @@ it is the whole mental model.
 This section is the most important one in the file. Keep it honest, and never
 upgrade "compiles" to "works".
 
-**Built, tested and run on this machine:**
+**Built, tested and run on this machine** — 416 checks across 8 binaries:
 
 - The crosspoint `Router` and its plan-every-sink invariant — 36 checks.
 - Exact rational rates, tick deadlines and the drift property — 40 checks,
   including a pin on the specific unsigned-promotion bug that cost oxbow a day.
 - The pixel format model, strides and packing-group rounding — 33 checks.
-- Interface enumeration, and resolution of a selector to an interface — 81
-  checks (count is machine-dependent; the suite walks real interfaces). The
-  `interfaces` CLI command has been run and its output checked against
-  `ifconfig` on this Mac, including confirming that a Wi-Fi interface correctly
-  reports unknown link speed rather than a fabricated one.
+- Pixel conversion between BGRA/RGBA/UYVY/YUY2/v210 — 103 checks, including a
+  75% colour-bar round trip verified by pixel readback (within 2 code values),
+  an explicit channel-swap check, and legal-black behaviour.
+- The `Engine` frame loop — 37 checks, driven through a real running engine
+  rather than through `Router::plan()` alone.
+- Config parsing and its rejections — 57 checks.
+- Interface enumeration and selector resolution — 81 checks (count is
+  machine-dependent; the suite walks real interfaces). The `interfaces` command
+  has been run and checked against `ifconfig`, including confirming a Wi-Fi
+  interface reports unknown link speed rather than a fabricated one.
+- **The whole application, end to end.** `frame-ferret run` generates colour
+  bars, routes them, converts, and serves a live control page. One 9049-tick
+  run gave 4507 frames + 4542 black = 9049 exactly — one action per sink per
+  tick — at 49.99 fps with zero late ticks. The crosspoint has been clicked in
+  a real browser and the resulting route verified against the REST API.
 
-**Not written at all.** Every transport, every capture source, every output,
-the control server, the web UI and the tray launcher. There is no video path.
-Do not describe any of it as working.
+**Not written at all.** Every transport (NDI, OMT, SRT, ST 2110), every capture
+source, every hardware output, the OS extensions, and the tray launcher. There
+is no *real* video path — only the synthetic one. Do not describe any of it as
+working.
 
-**Never built:** Windows, Linux. The code has platform branches; none has been
-compiled.
+**Never built or run:** Windows, Linux. The code has platform branches and CI
+compiles all three from this commit onward, but only macOS has ever run.
 
 ## The invariant everything rests on
 

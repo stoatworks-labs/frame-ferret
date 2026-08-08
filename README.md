@@ -1,12 +1,13 @@
 # Frame Ferret
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
-> (Anthropic), directed and reviewed by a human author. What exists today is the
-> node model, the crosspoint router, exact-rational frame timing and network
-> interface enumeration — 4 test binaries, 190 checks, all passing, and a CLI
-> that lists this machine's real NICs. **No video has passed through it yet.**
-> Every transport, every capture source and every output listed below is
-> designed and documented but not implemented. See [Status](#status).
+> (Anthropic), directed and reviewed by a human author. A synthetic source runs
+> end to end through the router, the pixel-format conversion and a live web
+> control page — measured at 49.99 fps with zero late ticks, and the colour
+> conversion is checked against BT.709 colour bars by pixel readback. 8 test
+> binaries, 416 checks, all passing. **No real video has passed through it yet:**
+> every transport, every capture source and every hardware output is designed
+> and documented but not implemented. See [Status](#status).
 
 A software virtual capture card. One application that is an **NDI, OMT, SRT and
 ST 2110 endpoint** — transmitting and receiving — over a chosen network
@@ -53,15 +54,31 @@ Honest, and it will stay honest as this grows.
 | Node model, crosspoint router | **Built and tested.** 36 checks |
 | Exact rational rates and tick deadlines | **Built and tested.** 40 checks |
 | Pixel format model | **Built and tested.** 33 checks |
-| Interface enumeration and binding | **Built and runs.** 81 checks, and verified against this machine's real NICs. The count varies by machine — the suite walks whatever interfaces it finds |
-| CLI (`interfaces`, `kinds`, `version`) | **Runs** |
+| Pixel conversion (BGRA/RGBA/UYVY/YUY2/v210) | **Built and tested.** 103 checks, including a colour-bar round trip verified by pixel readback |
+| Frame loop / engine | **Built, tested and run.** 37 checks; 9049 ticks at 50 fps with zero late |
+| Config loading | **Built and tested.** 57 checks |
+| Interface enumeration and binding | **Built and runs.** 81 checks, verified against this machine's real NICs. The count varies by machine — the suite walks whatever it finds |
+| Test-pattern source, preview sink | **Built and run** |
+| Web control page + JSON API | **Built and driven in a browser.** Crosspoint clicks verified against the API |
+| CLI (`run`, `selftest`, `interfaces`, `kinds`) | **Runs** |
 | NDI, OMT, SRT, ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
 | DeckLink, Syphon/Spout, HTML output | **Not started** |
-| Web control UI, tray launcher | **Not started** |
-| Windows, Linux | **Never built** |
+| Tray launcher | **Not started** |
+| Windows, Linux | **Never built or run.** CI compiles them from this commit onward |
+
+### What has actually been observed
+
+Running `frame-ferret run` on this Mac: colour bars generated at 1280x720p50,
+routed through the crosspoint, converted, and displayed live on the control
+page. Over one 9049-tick run: **4507 frames delivered + 4542 black = 9049**,
+exactly one action per sink per tick, zero late ticks, 49.99 fps measured.
+
+Unrouting the sink from the browser turned the output black *and kept it
+running at 50 fps*, reporting `no source routed` — which is the invariant this
+whole program is built around, observed rather than asserted.
 
 Two constraints found while scoping, both written up in full because they
 shape everything downstream:
@@ -85,9 +102,26 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j8
 cd build && ctest --output-on-failure
 ```
 
+Run it, then open <http://127.0.0.1:8740/>:
+
+```bash
+./build/frame-ferret run
+```
+
+Prove the whole frame path without a network or any hardware:
+
+```bash
+./build/frame-ferret selftest
+```
+
 ```bash
 ./build/frame-ferret interfaces
 ```
+
+`config/example.json` is a minimal working configuration.
+`config/not-yet-implemented.json` shows the shape a real one will take — it
+starts today and reports every unbuilt node as unavailable, which is the
+intended behaviour rather than a fault.
 
 ## Documentation
 

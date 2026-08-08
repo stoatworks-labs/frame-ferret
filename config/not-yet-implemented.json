@@ -1,0 +1,95 @@
+{
+  "_comment": [
+    "What a real configuration will look like once the transports exist.",
+    "Every node here except 'bars' and 'monitor' is DESIGNED BUT NOT",
+    "IMPLEMENTED — running this config today starts successfully and reports",
+    "each one as unavailable, which is the behaviour to expect rather than a",
+    "fault. See docs/ROADMAP.md.",
+    "",
+    "It is committed so the config schema is exercised against the shape it",
+    "actually has to support, not only against the two nodes that work."
+  ],
+
+  "rate": "50",
+
+  "control": {
+    "bind": "127.0.0.1",
+    "port": 8740
+  },
+
+  "nodes": [
+    {
+      "id": "bars",
+      "kind": "test",
+      "label": "Colour bars",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": "monitor",
+      "kind": "preview",
+      "label": "Monitor"
+    },
+
+    {
+      "id": "ndi-in",
+      "kind": "ndi",
+      "label": "NDI from the gallery",
+      "interface": "en0",
+      "target": "GALLERY (Mixer Out 1)"
+    },
+    {
+      "id": "ndi-out",
+      "kind": "ndi",
+      "label": "NDI to the network",
+      "interface": "en0",
+      "target": "Frame Ferret"
+    },
+
+    {
+      "id": "2110-in",
+      "kind": "st2110",
+      "label": "ST 2110-20 receive",
+      "interface": "10.0.10.4",
+      "target": "239.10.10.1:20000",
+      "format": "ycbcr422_10_pgroup"
+    },
+
+    {
+      "id": "desk",
+      "kind": "display",
+      "label": "Main display",
+      "target": "0"
+    },
+
+    {
+      "id": "camera",
+      "kind": "uvc",
+      "label": "Virtual camera",
+      "width": 1920,
+      "height": 1080,
+      "format": "nv12"
+    },
+    {
+      "id": "sdi",
+      "kind": "decklink",
+      "label": "DeckLink out 1",
+      "target": "0",
+      "format": "v210"
+    },
+    {
+      "id": "syphon",
+      "kind": "surface-out",
+      "label": "Syphon server",
+      "target": "Frame Ferret"
+    }
+  ],
+
+  "routes": {
+    "monitor": "bars",
+    "ndi-out": "bars",
+    "camera": "2110-in",
+    "sdi": "2110-in",
+    "syphon": "desk"
+  }
+}

@@ -21,6 +21,16 @@ enum class NodeKind {
   srt,
   st2110,
 
+  /// A synthetic source: 75% colour bars with a moving marker. Not a
+  /// debugging afterthought — it is how the whole frame path is proven with no
+  /// SDK, no network and no hardware, and it is what `selftest` drives.
+  testPattern,
+
+  /// Holds the latest frame for the control page. A real sink, routed through
+  /// the crosspoint like any other, so the operator sees what the router
+  /// actually produced rather than a picture assembled somewhere else.
+  preview,
+
   // Source-only: things that observe this machine.
   displayCapture,
   windowCapture,
