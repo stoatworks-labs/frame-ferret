@@ -27,9 +27,29 @@ class Engine {
   Engine();
   ~Engine();
 
-  /// Takes ownership. Must be called before `start`.
+  /// Takes ownership. Safe **while running**: the node is queued and applied
+  /// at the top of the next tick, before any source is polled.
+  ///
+  /// Queued rather than locked because the frame loop walks these vectors every
+  /// tick and a mutex on that path would be held for the whole of serving every
+  /// sink. A queue drained at one defined point costs nothing per tick and
+  /// makes "when does this take effect" answerable: the next frame, never
+  /// half-way through one.
   void addSource(std::unique_ptr<Source> source, PixelFormat nativeFormat);
   void addSink(std::unique_ptr<Sink> sink);
+
+  /// Removes a node by id, source or sink. Queued the same way.
+  ///
+  /// Removing a source clears every route pointing at it, so the sinks it fed
+  /// go black **with a reason** on the next tick rather than being skipped —
+  /// the invariant holds across a reconfiguration exactly as it does across a
+  /// lost signal.
+  void removeNode(const std::string& id);
+
+  /// Whether `id` is known, counting nodes still queued. A caller that has just
+  /// added a node and immediately asks would otherwise be told it does not
+  /// exist.
+  bool knows(const std::string& id) const;
 
   Router& router() { return router_; }
 
@@ -89,6 +109,19 @@ class Engine {
     std::unique_ptr<AudioFrame> audio;
   };
 
+  /// A queued change, applied between ticks.
+  struct Pending {
+    enum class What { addSource, addSink, remove } what;
+    std::string id;
+    std::unique_ptr<Source> source;
+    std::unique_ptr<Sink> sink;
+    PixelFormat nativeFormat = PixelFormat::unknown;
+  };
+
+  /// Applies every queued change. Called from the frame thread only, at the
+  /// top of a tick.
+  void applyPending();
+
   Router router_;
   std::vector<SourceEntry> sources_;
   std::vector<std::unique_ptr<Sink>> sinks_;
@@ -104,6 +137,11 @@ class Engine {
   // a second is a measurable share of the frame budget and a reliable source of
   // jitter under memory pressure.
   std::vector<uint8_t> convertScratch_;
+
+  mutable std::mutex pendingMutex_;
+  std::vector<Pending> pending_;
+  /// Ids that exist or are queued, so `knows()` can answer before a drain.
+  std::vector<std::string> announced_;
 
   mutable std::mutex countersMutex_;
   Counters counters_;

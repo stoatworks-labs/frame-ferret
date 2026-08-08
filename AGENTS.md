@@ -121,6 +121,29 @@ neither has been run interactively, neither has a window or a GPU path, and no
 hardware backend exists on any platform. Treat "the synthetic path runs on all
 three" as the claim; nothing stronger.
 
+## Nodes can be added and removed while running
+
+`Engine::addSource/addSink/removeNode` are safe on a running engine. They
+**queue**, and `applyPending()` drains the queue at the top of a tick, before
+any source is polled — so a tick always sees one consistent set of nodes and
+"when does this take effect" has an answer: the next frame, never half-way
+through one.
+
+Queued rather than locked on purpose: the frame loop walks those vectors every
+tick, and a mutex there would be held across serving every sink.
+
+Two things that follow, both pinned by tests:
+
+- **Removing a source clears every route pointing at it**, so the sinks it fed
+  go black *with a reason* on the next tick. A reconfiguration is just another
+  way for a source to go away, and the invariant holds across it.
+- **Indices are rebuilt for the whole batch, never patched.** Positions shift
+  on any insert or erase, so erasing a sink from the middle would otherwise
+  send the next sink's frames to the wrong object.
+
+`knows(id)` counts queued nodes, so a caller that adds one and immediately asks
+is not told it does not exist.
+
 ## The invariant everything rests on
 
 `Router::plan()` returns **exactly one action per sink, every tick**, whatever

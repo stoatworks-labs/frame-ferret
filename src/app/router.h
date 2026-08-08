@@ -41,6 +41,23 @@ class Router {
   void addSource(const std::string& id, PixelFormat nativeFormat);
   void addSink(const std::string& id, std::vector<PixelFormat> accepts);
 
+  /// Removes a node. Removing a source also **clears every route pointing at
+  /// it** — leaving them would give sinks a route to something that no longer
+  /// exists, and `plan()` would fall through to its defensive branch every
+  /// tick rather than saying plainly that the source is gone.
+  ///
+  /// Returns false if the id is unknown, so a caller can tell "removed" from
+  /// "was never there".
+  bool removeSource(const std::string& id);
+  bool removeSink(const std::string& id);
+
+  bool hasSource(const std::string& id) const {
+    return sources_.find(id) != sources_.end();
+  }
+  bool hasSink(const std::string& id) const {
+    return sinks_.find(id) != sinks_.end();
+  }
+
   /// Points a sink at a source. An empty `sourceId` clears the route. Returns
   /// false if either id is unknown — a typo'd route is rejected rather than
   /// stored, so the crosspoint never contains a route that cannot fire.

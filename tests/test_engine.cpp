@@ -461,6 +461,139 @@ void muteSilencesAudio() {
   CHECK(sink->blacks > blacksAtMute);
 }
 
+/// A sink added while the engine is running starts being served, without a
+/// restart. This is the whole point of the queue.
+void aSinkCanBeAddedWhileRunning() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* first = new RecordingSink("first", {});
+  engine.addSink(std::unique_ptr<Sink>(first));
+
+  std::string err;
+  CHECK(engine.router().route("first", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 8);
+
+  auto* second = new RecordingSink("late", {});
+  engine.addSink(std::unique_ptr<Sink>(second));
+  CHECK(engine.knows("late"));
+
+  waitForTicks(engine, engine.counters().ticks + 10);
+  // It is served immediately, as black — it has no route yet, and the
+  // invariant applies to a node that has just appeared exactly as it does to
+  // one that was there at startup.
+  CHECK(second->blacks > 0);
+
+  CHECK(engine.router().route("late", "tone", err));
+  const int blacksBefore = second->blacks;
+  waitForTicks(engine, engine.counters().ticks + 10);
+  engine.stop();
+
+  CHECK(second->frames > 0);
+  CHECK(second->blacks < blacksBefore + 5);
+  // The one that was already there was undisturbed.
+  CHECK(first->frames > 0);
+}
+
+/// Removing a source mid-run must leave its sinks black **with a reason**,
+/// not skipped and not crashed. A reconfiguration is just another way for a
+/// source to go away.
+void removingASourceLeavesItsSinksBlackWithAReason() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* sink = new RecordingSink("out", {});
+  engine.addSink(std::unique_ptr<Sink>(sink));
+
+  std::string err;
+  CHECK(engine.router().route("out", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 10);
+  CHECK(sink->frames > 0);
+
+  engine.removeNode("tone");
+  CHECK(!engine.knows("tone"));
+  const int framesAtRemoval = sink->frames;
+  waitForTicks(engine, engine.counters().ticks + 12);
+
+  const auto reasons = engine.sinkReasons();
+  engine.stop();
+
+  // Video stopped, black started, and the sink is still being served.
+  CHECK(sink->frames < framesAtRemoval + 5);
+  CHECK(sink->blacks > 0);
+  auto it = reasons.find("out");
+  CHECK(it != reasons.end());
+  CHECK(!it->second.empty());
+  // The route was cleared rather than left dangling.
+  CHECK_EQ(engine.router().routedSource("out"), std::string());
+}
+
+/// Removing a sink stops it being served and leaves the others alone. The
+/// index rebuild is what this really exercises: erasing from the middle shifts
+/// every position after it.
+void removingASinkLeavesTheOthersServed() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* a = new RecordingSink("a", {});
+  auto* b = new RecordingSink("b", {});
+  auto* c = new RecordingSink("c", {});
+  engine.addSink(std::unique_ptr<Sink>(a));
+  engine.addSink(std::unique_ptr<Sink>(b));
+  engine.addSink(std::unique_ptr<Sink>(c));
+
+  std::string err;
+  CHECK(engine.router().route("a", "tone", err));
+  CHECK(engine.router().route("c", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 10);
+  CHECK(a->frames > 0);
+  CHECK(c->frames > 0);
+
+  // Remove the middle one, so a stale index would send c's frames to b.
+  engine.removeNode("b");
+
+  // Removal lands at the top of the NEXT tick, so a tick already in flight may
+  // still serve b once. Let the queue drain before snapshotting — sampling
+  // immediately after the call tests the race, not the contract.
+  waitForTicks(engine, engine.counters().ticks + 3);
+  const int bFrames = b->frames + b->blacks;
+
+  waitForTicks(engine, engine.counters().ticks + 12);
+  engine.stop();
+
+  CHECK_EQ(b->frames + b->blacks, bFrames);   // no longer served at all
+  CHECK(a->frames > 0);
+  CHECK(c->frames > 0);
+  CHECK(!engine.router().hasSink("b"));
+  CHECK(engine.router().hasSink("c"));
+}
+
+/// Removing something that was never there is not an error, and must not
+/// disturb anything.
+void removingAnUnknownNodeIsHarmless() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+  engine.addSource(std::make_unique<TonedSource>("tone"), PixelFormat::bgra8);
+  auto* sink = new RecordingSink("out", {});
+  engine.addSink(std::unique_ptr<Sink>(sink));
+
+  std::string err;
+  CHECK(engine.router().route("out", "tone", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 8);
+
+  engine.removeNode("never-existed");
+  waitForTicks(engine, engine.counters().ticks + 8);
+  engine.stop();
+
+  CHECK(sink->frames > 0);
+  CHECK(engine.router().hasSink("out"));
+  CHECK(engine.router().hasSource("tone"));
+}
+
 void startingWithNoSinksIsAnError() {
   Engine engine;
   std::string err;
@@ -507,6 +640,10 @@ void run() {
   audioReachesEverySinkOnOneSource();
   anUnroutedSinkGetsNoAudio();
   muteSilencesAudio();
+  aSinkCanBeAddedWhileRunning();
+  removingASourceLeavesItsSinksBlackWithAReason();
+  removingASinkLeavesTheOthersServed();
+  removingAnUnknownNodeIsHarmless();
   aSourceThatConnectsOnlyWhenPolledStillWorks();
   startingWithNoSinksIsAnError();
   anInvalidRateIsRejected();

@@ -12,6 +12,20 @@ void Router::addSink(const std::string& id, std::vector<PixelFormat> accepts) {
   sinks_[id].accepts = std::move(accepts);
 }
 
+bool Router::removeSource(const std::string& id) {
+  if (sources_.erase(id) == 0) return false;
+  // Any sink pointed at it becomes unrouted, which plan() then reports as
+  // "no source routed" — the honest state — rather than as a dangling route.
+  for (auto& [sinkId, sink] : sinks_) {
+    if (sink.routedFrom == id) sink.routedFrom.clear();
+  }
+  return true;
+}
+
+bool Router::removeSink(const std::string& id) {
+  return sinks_.erase(id) > 0;
+}
+
 bool Router::route(const std::string& sinkId, const std::string& sourceId,
                    std::string& error) {
   auto sink = sinks_.find(sinkId);

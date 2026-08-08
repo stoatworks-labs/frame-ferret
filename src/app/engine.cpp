@@ -1,5 +1,6 @@
 #include "app/engine.h"
 
+#include <algorithm>
 #include <chrono>
 
 #include "core/convert.h"
@@ -13,21 +14,110 @@ Engine::~Engine() { stop(); }
 void Engine::addSource(std::unique_ptr<Source> source,
                        PixelFormat nativeFormat) {
   if (!source) return;
-  const std::string id = source->id();
-  router_.addSource(id, nativeFormat);
-  sourceIndex_[id] = sources_.size();
-  SourceEntry e;
-  e.source = std::move(source);
-  e.nativeFormat = nativeFormat;
-  sources_.push_back(std::move(e));
+  Pending p;
+  p.what = Pending::What::addSource;
+  p.id = source->id();
+  p.source = std::move(source);
+  p.nativeFormat = nativeFormat;
+  {
+    std::lock_guard<std::mutex> lock(pendingMutex_);
+    announced_.push_back(p.id);
+    pending_.push_back(std::move(p));
+  }
+  // Before the loop exists there is no tick to wait for, so drain here. That
+  // keeps buildNodes() and the tests reading exactly as they did.
+  if (!running_.load()) applyPending();
 }
 
 void Engine::addSink(std::unique_ptr<Sink> sink) {
   if (!sink) return;
-  const std::string id = sink->id();
-  router_.addSink(id, sink->preferredFormats());
-  sinkIndex_[id] = sinks_.size();
-  sinks_.push_back(std::move(sink));
+  Pending p;
+  p.what = Pending::What::addSink;
+  p.id = sink->id();
+  p.sink = std::move(sink);
+  {
+    std::lock_guard<std::mutex> lock(pendingMutex_);
+    announced_.push_back(p.id);
+    pending_.push_back(std::move(p));
+  }
+  if (!running_.load()) applyPending();
+}
+
+void Engine::removeNode(const std::string& id) {
+  Pending p;
+  p.what = Pending::What::remove;
+  p.id = id;
+  {
+    std::lock_guard<std::mutex> lock(pendingMutex_);
+    announced_.erase(std::remove(announced_.begin(), announced_.end(), id),
+                     announced_.end());
+    pending_.push_back(std::move(p));
+  }
+  if (!running_.load()) applyPending();
+}
+
+bool Engine::knows(const std::string& id) const {
+  std::lock_guard<std::mutex> lock(pendingMutex_);
+  return std::find(announced_.begin(), announced_.end(), id) !=
+         announced_.end();
+}
+
+void Engine::applyPending() {
+  std::vector<Pending> batch;
+  {
+    std::lock_guard<std::mutex> lock(pendingMutex_);
+    if (pending_.empty()) return;
+    batch.swap(pending_);
+  }
+
+  for (auto& p : batch) {
+    switch (p.what) {
+      case Pending::What::addSource: {
+        SourceEntry e;
+        e.source = std::move(p.source);
+        e.nativeFormat = p.nativeFormat;
+        sources_.push_back(std::move(e));
+        router_.addSource(p.id, p.nativeFormat);
+        break;
+      }
+      case Pending::What::addSink: {
+        router_.addSink(p.id, p.sink->preferredFormats());
+        sinks_.push_back(std::move(p.sink));
+        break;
+      }
+      case Pending::What::remove: {
+        router_.removeSource(p.id);
+        router_.removeSink(p.id);
+        // Erase by identity rather than by a cached index: every index after
+        // a removal shifts, so the maps are rebuilt below in one pass instead
+        // of being patched here.
+        sources_.erase(
+            std::remove_if(sources_.begin(), sources_.end(),
+                           [&](const SourceEntry& e) {
+                             return e.source && e.source->id() == p.id;
+                           }),
+            sources_.end());
+        sinks_.erase(std::remove_if(sinks_.begin(), sinks_.end(),
+                                    [&](const std::unique_ptr<Sink>& s) {
+                                      return s && s->id() == p.id;
+                                    }),
+                     sinks_.end());
+        break;
+      }
+    }
+  }
+
+  // One rebuild for the whole batch. Indices are positions in the vectors and
+  // any insert or erase invalidates the ones after it, so keeping them
+  // incrementally correct is more moving parts than recomputing.
+  sourceIndex_.clear();
+  for (size_t i = 0; i < sources_.size(); ++i) {
+    sourceIndex_[sources_[i].source->id()] = i;
+  }
+  sinkIndex_.clear();
+  for (size_t i = 0; i < sinks_.size(); ++i) {
+    sinkIndex_[sinks_[i]->id()] = i;
+  }
 }
 
 bool Engine::start(std::string& error) {
@@ -63,6 +153,10 @@ void Engine::loop() {
   uint64_t fpsWindowTicks = 0;
 
   while (!stopping_.load()) {
+    // Nodes added or removed since the last tick land here, before anything is
+    // polled or served — so a tick always sees one consistent set.
+    applyPending();
+
     // Poll every source, every tick, unconditionally.
     //
     // Never gate this on `connected()`. A network receiver only *becomes*
