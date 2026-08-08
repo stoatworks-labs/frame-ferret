@@ -29,6 +29,7 @@ add_library(ferret_core STATIC
   src/core/convert.cpp
   src/sources/test_pattern.cpp
   src/sinks/preview.cpp
+  src/sinks/decklink.cpp
   src/app/config.cpp
   src/app/engine.cpp
   src/app/factory.cpp
@@ -43,6 +44,67 @@ target_include_directories(ferret_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(WIN32)
   target_link_libraries(ferret_core PUBLIC iphlpapi ws2_32)
+endif()
+
+# ---------------------------------------------------------------------------
+# DeckLink, optional.
+#
+# The Blackmagic SDK is not vendored — its licence is not ours to redistribute
+# — so this is off unless -DDECKLINK_SDK_DIR is given. Without it the sink
+# still exists and reports itself unavailable, so nothing else changes.
+#
+# The version check is load-bearing, not defensive. This fleet's machines carry
+# SEVERAL SDK copies at different versions (a 10.11 set inside the NDI SDK's
+# examples, a 12.2 set inside Unreal's BlackmagicMedia), and first-hit order
+# picks whichever comes first. Below 11.0 there is no IDeckLinkProfileAttributes
+# and the build fails a long way from the cause.
+# ---------------------------------------------------------------------------
+set(DECKLINK_SDK_DIR "" CACHE PATH "Blackmagic DeckLink SDK (enables SDI output)")
+if(DECKLINK_SDK_DIR)
+  if(APPLE)
+    set(DECKLINK_PLATFORM Mac)
+  elseif(WIN32)
+    set(DECKLINK_PLATFORM Win)
+  else()
+    set(DECKLINK_PLATFORM Linux)
+  endif()
+
+  find_path(DECKLINK_INCLUDE_DIR DeckLinkAPI.h
+    HINTS "${DECKLINK_SDK_DIR}"
+    PATH_SUFFIXES "${DECKLINK_PLATFORM}/include" "include/${DECKLINK_PLATFORM}"
+                  "${DECKLINK_PLATFORM}" "Include/${DECKLINK_PLATFORM}" "include"
+    NO_DEFAULT_PATH)
+  if(NOT DECKLINK_INCLUDE_DIR)
+    message(FATAL_ERROR "DECKLINK_SDK_DIR is set but DeckLinkAPI.h was not found under it")
+  endif()
+
+  if(EXISTS "${DECKLINK_INCLUDE_DIR}/DeckLinkAPIVersion.h")
+    file(STRINGS "${DECKLINK_INCLUDE_DIR}/DeckLinkAPIVersion.h" DECKLINK_VERSION_LINE
+         REGEX "BLACKMAGIC_DECKLINK_API_VERSION_STRING")
+    string(REGEX MATCH "([0-9]+)\\.([0-9]+)" _dlm "${DECKLINK_VERSION_LINE}")
+    if(CMAKE_MATCH_1 AND CMAKE_MATCH_1 LESS 11)
+      message(FATAL_ERROR
+        "DeckLink SDK at ${DECKLINK_INCLUDE_DIR} is ${CMAKE_MATCH_1}.${CMAKE_MATCH_2}; "
+        "11.0+ required (IDeckLinkProfileAttributes arrived in 11.0). "
+        "There is very likely a newer SDK elsewhere on this machine.")
+    endif()
+    message(STATUS "Frame Ferret: DeckLink SDK ${CMAKE_MATCH_1}.${CMAKE_MATCH_2} at ${DECKLINK_INCLUDE_DIR}")
+  endif()
+
+  find_file(DECKLINK_DISPATCH DeckLinkAPIDispatch.cpp
+    HINTS "${DECKLINK_INCLUDE_DIR}" "${DECKLINK_SDK_DIR}"
+    PATH_SUFFIXES "" "${DECKLINK_PLATFORM}/include" "include"
+    NO_DEFAULT_PATH)
+  if(NOT DECKLINK_DISPATCH)
+    message(FATAL_ERROR "DeckLinkAPIDispatch.cpp not found next to DeckLinkAPI.h")
+  endif()
+
+  target_sources(ferret_core PRIVATE "${DECKLINK_DISPATCH}")
+  target_include_directories(ferret_core PUBLIC "${DECKLINK_INCLUDE_DIR}")
+  target_compile_definitions(ferret_core PUBLIC FERRET_HAVE_DECKLINK)
+  if(APPLE)
+    target_link_libraries(ferret_core PUBLIC "-framework CoreFoundation")
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------

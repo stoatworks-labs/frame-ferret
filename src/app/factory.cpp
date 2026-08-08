@@ -2,6 +2,7 @@
 
 #include "sources/test_pattern.h"
 #include "transports/ndi.h"
+#include "sinks/decklink.h"
 #include "transports/omt.h"
 
 namespace ferret {
@@ -12,6 +13,7 @@ bool isImplemented(NodeKind kind) {
     case NodeKind::preview:
     case NodeKind::ndi:
     case NodeKind::omt:
+    case NodeKind::decklink:
       return true;
     default:
       return false;
@@ -86,6 +88,17 @@ bool buildNodes(const AppConfig& config, Engine& engine,
       case NodeKind::preview: {
         auto sink = std::make_unique<PreviewSink>(node);
         previews.push_back(sink.get());
+        engine.addSink(std::move(sink));
+        ++built;
+        break;
+      }
+
+      case NodeKind::decklink: {
+        auto sink = makeDeckLinkSink(node, reason);
+        if (!sink) {
+          failures.push_back({node.id, reason});
+          continue;
+        }
         engine.addSink(std::move(sink));
         ++built;
         break;

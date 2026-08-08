@@ -69,11 +69,12 @@ Honest, and it will stay honest as this grows.
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. **No SRT node yet:** it needs an encoder |
 | SRT encode / decode | **Not started.** The remaining piece — see below |
+| **DeckLink output** | **Built, optional at build time.** Prefers v210 so 10 bits reach the card. **Never run against a card from this codebase** — no DeckLink was attached while it was written |
 | ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
-| DeckLink, Syphon/Spout, HTML output | **Not started** |
+| DeckLink capture, Syphon/Spout, HTML output | **Not started** |
 | Tray launcher | **Not started** |
 | Windows, Linux | **Built and self-tested by CI**, all three platforms green. Never run interactively, and no hardware path exists on any of them |
 

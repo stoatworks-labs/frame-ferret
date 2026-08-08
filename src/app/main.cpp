@@ -17,6 +17,7 @@
 #include "control/http_server.h"
 #include "net/interfaces.h"
 #include "transports/ndi.h"
+#include "sinks/decklink.h"
 #include "transports/omt.h"
 
 namespace {
@@ -319,6 +320,23 @@ int cmdSources(const std::string& protocol) {
             "receiver can always connect directly with omt://host:port.\n");
       }
       for (const auto& s : sources) std::printf("  %s\n", s.c_str());
+    }
+  }
+
+  if (protocol.empty() || protocol == "decklink") {
+    if (!ferret::DeckLinkRuntime::builtIn()) {
+      std::printf("decklink: %s\n",
+                  ferret::DeckLinkRuntime::unavailableReason().c_str());
+    } else {
+      const auto devices = ferret::DeckLinkRuntime::listDevices();
+      std::printf("decklink:\n");
+      if (devices.empty()) {
+        std::printf("  (none) — %s\n",
+                    ferret::DeckLinkRuntime::unavailableReason().c_str());
+      }
+      for (size_t i = 0; i < devices.size(); ++i) {
+        std::printf("  %zu: %s\n", i, devices[i].c_str());
+      }
     }
   }
 

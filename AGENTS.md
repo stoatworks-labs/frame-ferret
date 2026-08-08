@@ -58,8 +58,19 @@ Note SRT **can** bind to a chosen interface — `srt_bind()` takes a real addres
 and there is SRTO_BINDTODEVICE — which makes it the first transport here where
 the `interface` setting does something. NDI and OMT can only warn.
 
-**Not written at all.** ST 2110, every capture source, every hardware output,
-the OS extensions, and the tray launcher. Do not describe any of it as working.
+**DeckLink output is written but has NEVER been run against a card.** The
+scheduled-playback sequence is lifted faithfully from oxbow's
+`src/io/decklink.cpp`, which *has* been run on a real Duo 2 — but no DeckLink
+was attached to this machine while this port was written, so treat it as
+unverified. What is confirmed: it compiles against SDK 12.2, the build without
+the SDK reports itself unavailable, and with the SDK the dispatch layer
+enumerates (drivers found, zero devices). Optional at build time via
+`-DDECKLINK_SDK_DIR`; the version guard rejects anything below 11.0 and is
+proven to reject the 10.11 copy inside the NDI SDK's examples.
+
+**Not written at all.** ST 2110, every capture source, DeckLink *capture*,
+Syphon/Spout, the HTML output, the OS extensions, and the tray launcher. Do not
+describe any of it as working.
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
