@@ -242,7 +242,7 @@ class St2110Source final : public Source {
       // Drain what is waiting rather than one datagram per poll — at this
       // packet rate the poll alone would be most of the cost.
       for (int i = 0; i < 512; ++i) {
-        const ssize_t n = ::recv(fd_, reinterpret_cast<char*>(datagram.data()),
+        const auto n = ::recv(fd_, reinterpret_cast<char*>(datagram.data()),
                                  datagram.size(), 0);
         if (n <= 0) break;
         lastPacket = std::chrono::steady_clock::now();
@@ -333,11 +333,11 @@ class St2110Sink final : public Sink {
     packetiser_.packetise(
         frame.data, frame.strideBytes, timestamp,
         [this](const uint8_t* datagram, int size) {
-          const ssize_t sent =
+          const auto sent =
               ::sendto(fd_, reinterpret_cast<const char*>(datagram), size, 0,
                        reinterpret_cast<const sockaddr*>(&destination_),
                        sizeof(destination_));
-          if (sent != size) {
+          if (sent != static_cast<decltype(sent)>(size)) {
             ++sendErrors_;
           } else {
             ++packets_;
