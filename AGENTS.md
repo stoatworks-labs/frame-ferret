@@ -40,8 +40,12 @@ source, every hardware output, the OS extensions, and the tray launcher. There
 is no *real* video path — only the synthetic one. Do not describe any of it as
 working.
 
-**Never built or run:** Windows, Linux. The code has platform branches and CI
-compiles all three from this commit onward, but only macOS has ever run.
+**Windows and Linux: built and self-tested by CI**, all three platforms green.
+Because the CI `selftest` step drives the whole frame path — generator, router,
+conversion, pacing — they have genuinely *run* it, not merely compiled. But
+neither has been run interactively, neither has a window or a GPU path, and no
+hardware backend exists on any platform. Treat "the synthetic path runs on all
+three" as the claim; nothing stronger.
 
 ## The invariant everything rests on
 

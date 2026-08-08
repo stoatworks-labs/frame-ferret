@@ -67,7 +67,7 @@ Honest, and it will stay honest as this grows.
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
 | DeckLink, Syphon/Spout, HTML output | **Not started** |
 | Tray launcher | **Not started** |
-| Windows, Linux | **Never built or run.** CI compiles them from this commit onward |
+| Windows, Linux | **Built and self-tested by CI**, all three platforms green. Never run interactively, and no hardware path exists on any of them |
 
 ### What has actually been observed
 
