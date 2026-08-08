@@ -121,7 +121,8 @@ bool prepare(const ferret::AppConfig& config, ferret::Engine& engine,
   return true;
 }
 
-int cmdRun(const std::string& configPath) {
+int cmdRun(const std::string& configPath, const std::string& bindOverride,
+           int portOverride) {
   ferret::AppConfig config;
   if (configPath.empty()) {
     config = ferret::selftestConfig();
@@ -136,6 +137,12 @@ int cmdRun(const std::string& configPath) {
       return 1;
     }
   }
+
+  // The tray launcher owns where the control page listens, and passes it here.
+  // It must win over the config file, or a launcher that offers the operator a
+  // choice of interface and port would be lying about both.
+  if (!bindOverride.empty()) config.controlBind = bindOverride;
+  if (portOverride > 0) config.controlPort = portOverride;
 
   ferret::Engine engine;
   std::vector<ferret::NodeFailure> failures, warnings;
@@ -384,7 +391,8 @@ int usage() {
       "\n"
       "Usage: frame-ferret <command> [options]\n"
       "\n"
-      "  run [--config <file>]   Run the engine and serve the control page\n"
+      "  run [--config <file>] [--bind <addr>] [--port <n>]\n"
+      "                          Run the engine and serve the control page\n"
       "  selftest                Drive colour bars through the frame path\n"
       "  sources [--protocol X]  List NDI and OMT sources visible now\n"
       "  interfaces              List NICs available for binding, with speed\n"
@@ -425,16 +433,26 @@ int main(int argc, char** argv) {
   }
   if (cmd == "run") {
     std::string configPath;
+    std::string bind;
+    int port = 0;
     for (int i = 2; i < argc; ++i) {
       const std::string arg = argv[i];
       if ((arg == "--config" || arg == "-c") && i + 1 < argc) {
         configPath = argv[++i];
+      } else if (arg == "--bind" && i + 1 < argc) {
+        bind = argv[++i];
+      } else if (arg == "--port" && i + 1 < argc) {
+        port = std::atoi(argv[++i]);
+        if (port <= 0 || port > 65535) {
+          std::fprintf(stderr, "--port must be 1-65535\n");
+          return 1;
+        }
       } else {
         std::fprintf(stderr, "unknown option: %s\n", arg.c_str());
         return 1;
       }
     }
-    return cmdRun(configPath);
+    return cmdRun(configPath, bind, port);
   }
   if (cmd == "version") {
     std::printf("%s\n", FERRET_VERSION);

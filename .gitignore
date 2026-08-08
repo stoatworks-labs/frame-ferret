@@ -4,3 +4,7 @@ build-*/
 compile_commands.json
 .cache/
 tools/srtsend/target/
+launcher/src-tauri/bin/
+launcher/src-tauri/target/
+launcher/node_modules/
+build-launcher/

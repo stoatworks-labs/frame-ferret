@@ -244,6 +244,14 @@ shape everything downstream:
 
 ## Download
 
+**Most people want the desktop app** — `Frame Ferret.dmg` on macOS, the `.exe`
+installer on Windows, `.deb`/`.rpm` on Linux. It is a tray launcher: pick an
+interface and port, press Start, and it opens the control page in your browser.
+The engine is inside the bundle; nothing else to install.
+
+The `.zip` builds are the bare command-line binary, which is the right shape for
+a headless machine and for running under something else's supervisor.
+
 **[v0.1.0](https://github.com/stoatworks-labs/frame-ferret/releases/tag/v0.1.0)** — prebuilt for macOS, Windows and Linux. Pick your platform:
 
 <details>

@@ -1,0 +1,35 @@
+# Frame Ferret desktop app config.
+#
+# Frame Ferret is a single native binary, so this bundle embeds just that —
+# no runtime, no node_modules. {resource} is the .app resource directory, so
+# the shipped app is self-contained and runs from anywhere.
+#
+# Frame Ferret takes the control bind and port straight on the command line, so
+# this is plain `args` injection, exactly as oxbow does it. The nodes and routes
+# live in the JSON config; the launcher only owns where the control page
+# listens. With no --config it serves its built-in colour-bars configuration,
+# which is the right first-run experience: something is immediately on screen.
+
+[app]
+name = "Frame Ferret"
+command = "{resource}/bin/frame-ferret"
+args = ["run", "--bind", "{host}", "--port", "{port}"]
+url = "http://{host}:{port}/"
+default_port = 8740
+# cwd omitted -> runs from the writable app-config dir.
+
+[inject]
+mode = "args"
+
+# Palette mirrored from Frame Ferret's own control page.
+[app.theme]
+bg = "#14161a"
+panel = "#1c1f26"
+"panel-2" = "#232833"
+border = "#2a2f3a"
+text = "#e6e9ef"
+muted = "#8b93a4"
+dim = "#6e7681"
+accent = "#c9a227"
+"accent-soft" = "#2a2412"
+good = "#3fb950"

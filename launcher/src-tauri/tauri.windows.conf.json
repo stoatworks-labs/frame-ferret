@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": ["launcher.toml", "node.exe", "atem-overseer-app/**/*"]
+  }
+}
