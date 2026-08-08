@@ -64,11 +64,10 @@ Still to do here: a ten-minute soak, and audio actually verified.
   `transports/ffmpeg.*` are built and verified; hardware encoders are preferred
   where present.
 
-  **Still open: nothing has been decoded end to end.** No reference SRT sender
-  could be built on this machine — Homebrew's ffmpeg has no SRT, and neither
-  srt-file-transmit (stream API) nor srt-live-transmit (UDP bridge only) works
-  as one. This needs a real encoder: OBS, vMix, a hardware unit, or an ffmpeg
-  built `--enable-libsrt`.
+  **Receive is done and verified** against `tools/srtsend`, built on srt-tokio
+  — an independent SRT implementation. Sending is still to write: it needs an
+  H.264 encoder and a TS muxer, which is the same ffmpeg subprocess pointed the
+  other way.
 
 - **DeckLink out ✅ written**, optional behind `-DDECKLINK_SDK_DIR`. Lifted from
   oxbow's Duo 2-verified sequence, prefers v210. **Never run against a card

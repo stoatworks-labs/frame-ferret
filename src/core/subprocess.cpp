@@ -1,5 +1,6 @@
 #include "core/subprocess.h"
 
+#include <chrono>
 #include <cstring>
 #include <mutex>
 
@@ -63,18 +64,27 @@ class PosixSubprocess final : public Subprocess {
   }
 
   bool readExactly(uint8_t* buffer, size_t size, int timeoutMs) override {
+    // A real deadline for the whole record, not a counter decremented by a
+    // guess. The first version subtracted 10 per empty read and passed the
+    // result straight to poll() — which takes a NEGATIVE timeout to mean
+    // "block forever", so any caller asking for less than 10 ms hung the
+    // thread permanently on the first quiet moment. That is a deadlock, not a
+    // slow path, and it is invisible until the far end goes briefly quiet.
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(timeoutMs);
     size_t got = 0;
-    // A single deadline for the whole record, not per chunk: a frame arriving
-    // in twenty pieces must not get twenty full timeouts.
-    int remaining = timeoutMs;
     while (got < size) {
-      const int n = read(buffer + got, size - got, remaining);
+      const auto now = std::chrono::steady_clock::now();
+      if (now >= deadline) return false;
+      const auto left =
+          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+              .count();
+      // Never negative, and never zero-with-work-left: poll(0) spins.
+      const int slice = static_cast<int>(left > 0 ? left : 1);
+
+      const int n = read(buffer + got, size - got, slice);
       if (n < 0) return false;
-      if (n == 0) {
-        if (remaining <= 0) return false;
-        remaining -= 10;
-        continue;
-      }
+      if (n == 0) continue;
       got += static_cast<size_t>(n);
     }
     return true;

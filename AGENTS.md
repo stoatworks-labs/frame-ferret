@@ -47,15 +47,17 @@ upgrade "compiles" to "works".
 - **SRT's transport layer**, proven by a real loopback listener/caller pair
   carrying bytes. **There is no SRT node** — see below.
 
-**SRT receive is written but has NEVER decoded a picture end to end.** The
-socket layer is verified by loopback; the node connects, spawns ffmpeg and
-reports cleanly; the decode is unproven. The reason is the test rig, not
-confidence in the code: Homebrew's ffmpeg 8.1.2 has **no SRT protocol**,
-`srt-file-transmit` uses SRT's *stream* API and our live-mode receiver
-correctly rejects it ("MessageAPI/StreamAPI collision"), and
-`srt-live-transmit` only bridges UDP↔SRT so its UDP leg could not be checked
-independently. **Do not claim SRT works.** The next person needs a real SRT
-encoder — OBS, vMix, a hardware unit, or an ffmpeg built with `--enable-libsrt`.
+**SRT receive is verified end to end**, against `tools/srtsend` — ~50 lines on
+**srt-tokio**, the pure-Rust SRT stack srt-router uses, and a completely
+different implementation from the libsrt this binds. 129,156 bytes received
+byte-for-byte, decoded through an external ffmpeg, all seven SMPTE bars correct.
+
+Nothing already installed could act as that sender, and the reasons are worth
+knowing before trying again: **Homebrew's ffmpeg has no SRT protocol**
+(`-protocols` shows only `srtp`); **`srt-file-transmit` speaks SRT's stream
+API** and a live-mode receiver correctly rejects it with
+"MessageAPI/StreamAPI collision"; **`srt-live-transmit` only bridges UDP↔SRT**
+and refuses `file://` at both ends. See `tools/srtsend/README.md`.
 
 **SRT sending is not written at all** — it needs an encoder and a TS muxer.
 A node not used as some sink's source therefore reports that rather than

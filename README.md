@@ -68,7 +68,7 @@ Honest, and it will stay honest as this grows.
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. **No SRT node yet:** it needs an encoder |
-| SRT receive (decode) | **Written, connects, spawns ffmpeg — end-to-end decode UNVERIFIED.** See below |
+| **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly |
 | SRT send (encode) | **Not started** |
 | **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
 | **DeckLink output** | **Built, optional at build time.** Prefers v210 so 10 bits reach the card. **Never run against a card from this codebase** — no DeckLink was attached while it was written |
@@ -130,14 +130,19 @@ than linking it:
 Hardware encoders are preferred where present — on this Mac it selects
 `h264_videotoolbox` over `libx264`.
 
-**What is honestly unproven.** The SRT source connects, spawns ffmpeg and
-reports cleanly, but **no picture has been decoded end to end**, because no
-trustworthy reference sender could be built on this machine: Homebrew's ffmpeg
-8.1.2 has no SRT protocol compiled in, `srt-file-transmit` speaks SRT's stream
-API and is correctly rejected by our live-mode receiver, and
-`srt-live-transmit` only bridges UDP to SRT, so its own UDP leg could not be
-confirmed independently. Two real bugs *were* found and fixed while trying —
-see the commit — but "it decodes a picture" is not yet a claim this repo makes.
+**SRT receive, verified end to end.** Nothing already on the machine could act
+as a sender — Homebrew's ffmpeg has no SRT compiled in, `srt-file-transmit`
+speaks SRT's *stream* API and our live-mode receiver correctly rejects it, and
+`srt-live-transmit` only bridges UDP↔SRT — so `tools/srtsend` was written
+against **srt-tokio**, the pure-Rust SRT stack `srt-router` uses. That is a
+completely different implementation from the libsrt Frame Ferret binds, which
+is what makes the result meaningful.
+
+Frame Ferret received all **129,156 bytes byte-for-byte**, decoded them through
+an external ffmpeg, and rendered all seven SMPTE bars at the right levels in
+the right channel order.
+
+**SRT sending is still not written** — it needs an H.264 encoder and a TS muxer.
 
 SRT is the **only transport here that can genuinely bind to a chosen
 interface**: `srt_bind()` takes a real address, where NDI and OMT have no such
