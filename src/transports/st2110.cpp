@@ -104,10 +104,19 @@ int openReceiveSocket(const std::string& group, int port,
   }
 
   if (isMulticast(group)) {
-    // Join keyed on the interface INDEX, not its address. Two interfaces can
-    // carry the same address after a DHCP reshuffle, and on a multi-homed
-    // machine the wrong choice means a join that succeeds and receives nothing.
-#ifdef __APPLE__
+    // `ip_mreqn`, with its interface INDEX, is a Linux extension. macOS and
+    // Windows both have only `ip_mreq`, which identifies the interface by
+    // address. The index is the better key — two interfaces can hold the same
+    // address after a DHCP reshuffle — so it is used where it exists.
+    //
+    // Getting this split wrong is easy: an `#else` that means "Linux" quietly
+    // catches Windows too, which is exactly how this first broke.
+#if defined(__linux__)
+    ip_mreqn mreq{};
+    inet_pton(AF_INET, group.c_str(), &mreq.imr_multiaddr);
+    mreq.imr_address.s_addr = INADDR_ANY;
+    mreq.imr_ifindex = static_cast<int>(nic.index);
+#else
     ip_mreq mreq{};
     inet_pton(AF_INET, group.c_str(), &mreq.imr_multiaddr);
     if (!nic.address.empty()) {
@@ -115,11 +124,6 @@ int openReceiveSocket(const std::string& group, int port,
     } else {
       mreq.imr_interface.s_addr = INADDR_ANY;
     }
-#else
-    ip_mreqn mreq{};
-    inet_pton(AF_INET, group.c_str(), &mreq.imr_multiaddr);
-    mreq.imr_address.s_addr = INADDR_ANY;
-    mreq.imr_ifindex = static_cast<int>(nic.index);
 #endif
     if (::setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                      reinterpret_cast<char*>(&mreq), sizeof(mreq)) != 0) {
@@ -213,10 +217,17 @@ class St2110Source final : public Source {
     auto lastPacket = std::chrono::steady_clock::now();
 
     while (!stopping_.load()) {
+#ifdef _WIN32
+      WSAPOLLFD p{};
+      p.fd = static_cast<SOCKET>(fd_);
+      p.events = POLLRDNORM;
+      const int ready = ::WSAPoll(&p, 1, 100);
+#else
       pollfd p{};
       p.fd = fd_;
       p.events = POLLIN;
       const int ready = ::poll(&p, 1, 100);
+#endif
       if (ready <= 0) {
         // No packets for a while means the sender has gone. Reported as a
         // disconnection so the router emits black rather than holding a frozen
