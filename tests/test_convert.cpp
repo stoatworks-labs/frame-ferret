@@ -8,6 +8,12 @@
 using namespace ferret;
 
 namespace {
+// Every conversion now reports the range it produced; most tests do not care
+// which, so they share one sink for it.
+QuantRange outRange = QuantRange::unknown;
+}  // namespace
+
+namespace {
 
 VideoFrame makeBgra(std::vector<uint8_t>& store, int w, int h,
                     QuantRange range = QuantRange::full) {
@@ -51,17 +57,18 @@ void greyIsExactThroughEveryFormat() {
     PixelFormat midFmt;
     int midStride;
     std::string err;
-    CHECK(convert(src, hop, midFmt, mid, midStride, err));
+    CHECK(convert(src, hop, midFmt, outRange, mid, midStride, err));
 
     VideoFrame midFrame = src;
     midFrame.format = midFmt;
+    midFrame.range = outRange;
     midFrame.data = mid.data();
     midFrame.strideBytes = midStride;
 
     std::vector<uint8_t> back;
     PixelFormat backFmt;
     int backStride;
-    CHECK(convert(midFrame, PixelFormat::bgra8, backFmt, back, backStride, err));
+    CHECK(convert(midFrame, PixelFormat::bgra8, backFmt, outRange, back, backStride, err));
 
     uint8_t r, g, b;
     getPixel(back, backStride, 5, 1, &r, &g, &b);
@@ -93,17 +100,18 @@ void colourBarsSurviveAYcbcrRoundTrip() {
   PixelFormat midFmt;
   int midStride;
   std::string err;
-  CHECK(convert(src, PixelFormat::uyvy8, midFmt, mid, midStride, err));
+  CHECK(convert(src, PixelFormat::uyvy8, midFmt, outRange, mid, midStride, err));
 
   VideoFrame midFrame = src;
   midFrame.format = midFmt;
+  midFrame.range = outRange;
   midFrame.data = mid.data();
   midFrame.strideBytes = midStride;
 
   std::vector<uint8_t> back;
   PixelFormat backFmt;
   int backStride;
-  CHECK(convert(midFrame, PixelFormat::bgra8, backFmt, back, backStride, err));
+  CHECK(convert(midFrame, PixelFormat::bgra8, backFmt, outRange, back, backStride, err));
 
   for (size_t i = 0; i < bars.size(); ++i) {
     const int x = static_cast<int>(i) * barW + barW / 2;  // centre of the bar
@@ -129,11 +137,12 @@ void channelsAreNotSwapped() {
   PixelFormat midFmt, backFmt;
   int midStride, backStride;
   std::string err;
-  CHECK(convert(src, PixelFormat::uyvy8, midFmt, mid, midStride, err));
+  CHECK(convert(src, PixelFormat::uyvy8, midFmt, outRange, mid, midStride, err));
 
   VideoFrame m = src;
-  m.format = midFmt; m.data = mid.data(); m.strideBytes = midStride;
-  CHECK(convert(m, PixelFormat::bgra8, backFmt, back, backStride, err));
+  m.format = midFmt;
+  m.range = outRange; m.data = mid.data(); m.strideBytes = midStride;
+  CHECK(convert(m, PixelFormat::bgra8, backFmt, outRange, back, backStride, err));
 
   uint8_t r, g, b;
   getPixel(back, backStride, 4, 1, &r, &g, &b);
@@ -146,7 +155,7 @@ void channelsAreNotSwapped() {
   std::vector<uint8_t> asRgba;
   PixelFormat rgbaFmt;
   int rgbaStride;
-  CHECK(convert(m, PixelFormat::rgba8, rgbaFmt, asRgba, rgbaStride, err));
+  CHECK(convert(m, PixelFormat::rgba8, rgbaFmt, outRange, asRgba, rgbaStride, err));
   CHECK(asRgba[0] != back[0]);  // R in the low byte vs B in the low byte
 }
 
@@ -162,18 +171,19 @@ void v210CarriesMoreThanEightBits() {
   PixelFormat vf;
   int vs;
   std::string err;
-  CHECK(convert(src, PixelFormat::v210, vf, v, vs, err));
+  CHECK(convert(src, PixelFormat::v210, vf, outRange, v, vs, err));
 
   // The packing: 6 pixels in 16 bytes, so 12 pixels is exactly 32 bytes.
   CHECK_EQ(vs, 32);
 
   VideoFrame m = src;
-  m.format = vf; m.data = v.data(); m.strideBytes = vs;
+  m.format = vf;
+  m.range = outRange; m.data = v.data(); m.strideBytes = vs;
 
   std::vector<uint8_t> back;
   PixelFormat bf;
   int bs;
-  CHECK(convert(m, PixelFormat::bgra8, bf, back, bs, err));
+  CHECK(convert(m, PixelFormat::bgra8, bf, outRange, back, bs, err));
 
   uint8_t r, g, b;
   getPixel(back, bs, 6, 1, &r, &g, &b);
@@ -194,15 +204,16 @@ void uyvyAndYuy2AreTheSameDataReordered() {
   std::vector<uint8_t> u;
   PixelFormat uf;
   int us;
-  CHECK(convert(src, PixelFormat::uyvy8, uf, u, us, err));
+  CHECK(convert(src, PixelFormat::uyvy8, uf, outRange, u, us, err));
 
   VideoFrame uframe = src;
-  uframe.format = uf; uframe.data = u.data(); uframe.strideBytes = us;
+  uframe.format = uf;
+  uframe.range = outRange; uframe.data = u.data(); uframe.strideBytes = us;
 
   std::vector<uint8_t> y2;
   PixelFormat yf;
   int ys;
-  CHECK(convert(uframe, PixelFormat::yuy2_8, yf, y2, ys, err));
+  CHECK(convert(uframe, PixelFormat::yuy2_8, yf, outRange, y2, ys, err));
 
   // Same length, and every 4-byte group is a rotation of the other.
   CHECK_EQ(u.size(), y2.size());
@@ -212,18 +223,28 @@ void uyvyAndYuy2AreTheSameDataReordered() {
   CHECK_EQ(u[3], y2[2]);  // Y1
 
   VideoFrame yframe = src;
-  yframe.format = yf; yframe.data = y2.data(); yframe.strideBytes = ys;
+  yframe.format = yf;
+  yframe.range = outRange; yframe.data = y2.data(); yframe.strideBytes = ys;
 
   std::vector<uint8_t> backToU;
   PixelFormat buf;
   int bus;
-  CHECK(convert(yframe, PixelFormat::uyvy8, buf, backToU, bus, err));
+  CHECK(convert(yframe, PixelFormat::uyvy8, buf, outRange, backToU, bus, err));
   CHECK(backToU == u);  // exactly, no tolerance
 }
 
-/// Narrow and full range must actually differ. Conflating them is a visible
-/// black-level shift that gets misdiagnosed as a monitor problem.
-void narrowAndFullRangeDiffer() {
+/// An RGB source always encodes to NARROW YCbCr, whatever range it declares.
+///
+/// This is the rule, not an implementation detail, and it changed after a real
+/// bug: colour bars generated as full-range RGB were encoded as full-range
+/// YCbCr and sent over SRT, where the receiver expanded them a second time.
+/// Green came back at 240 instead of 191 — worst on the channels carrying the
+/// most luma weight — while hues and bar order stayed perfect, which is exactly
+/// what makes a range fault easy to misread as "nearly working".
+///
+/// Every transport here (NDI, OMT, SRT, DeckLink) carries narrow YCbCr by
+/// convention, so this is where that convention is enforced.
+void rgbAlwaysEncodesToNarrowYcbcr() {
   std::vector<uint8_t> fullStore, narrowStore;
   VideoFrame fullSrc = makeBgra(fullStore, 8, 2, QuantRange::full);
   VideoFrame narrowSrc = makeBgra(narrowStore, 8, 2, QuantRange::narrow);
@@ -237,13 +258,52 @@ void narrowAndFullRangeDiffer() {
   std::string err;
   std::vector<uint8_t> a, b;
   PixelFormat af, bf;
+  QuantRange aRange = QuantRange::unknown, bRange = QuantRange::unknown;
   int as, bs;
-  CHECK(convert(fullSrc, PixelFormat::uyvy8, af, a, as, err));
-  CHECK(convert(narrowSrc, PixelFormat::uyvy8, bf, b, bs, err));
+  CHECK(convert(fullSrc, PixelFormat::uyvy8, af, aRange, a, as, err));
+  CHECK(convert(narrowSrc, PixelFormat::uyvy8, bf, bRange, b, bs, err));
 
-  // Black at full range encodes Y=0; at narrow range it encodes Y=16.
-  CHECK_EQ(a[1], uint8_t{0});
+  // Black encodes to legal black either way, and the reported range says so.
+  CHECK_EQ(a[1], uint8_t{16});
   CHECK_EQ(b[1], uint8_t{16});
+  CHECK_EQ(static_cast<int>(aRange), static_cast<int>(QuantRange::narrow));
+  CHECK_EQ(static_cast<int>(bRange), static_cast<int>(QuantRange::narrow));
+  // Chroma is centred regardless.
+  CHECK_EQ(a[0], uint8_t{128});
+}
+
+/// Going the other way, an RGB destination is always full range — that is the
+/// convention the shared-surface and preview paths expect.
+void ycbcrToRgbIsAlwaysFullRange() {
+  std::vector<uint8_t> store;
+  VideoFrame src = makeBgra(store, 8, 2, QuantRange::full);
+  for (int y = 0; y < 2; ++y)
+    for (int x = 0; x < 8; ++x) setPixel(store, 8, x, y, 0, 0, 0);
+
+  std::string err;
+  std::vector<uint8_t> mid;
+  PixelFormat midFmt;
+  QuantRange midRange = QuantRange::unknown;
+  int midStride;
+  CHECK(convert(src, PixelFormat::uyvy8, midFmt, midRange, mid, midStride, err));
+
+  VideoFrame m = src;
+  m.format = midFmt;
+  m.range = midRange;
+  m.data = mid.data();
+  m.strideBytes = midStride;
+
+  std::vector<uint8_t> back;
+  PixelFormat backFmt;
+  QuantRange backRange = QuantRange::unknown;
+  int backStride;
+  CHECK(convert(m, PixelFormat::bgra8, backFmt, backRange, back, backStride, err));
+  CHECK_EQ(static_cast<int>(backRange), static_cast<int>(QuantRange::full));
+
+  // And black really does come back as black, not as 16.
+  CHECK(back[0] <= 2);
+  CHECK(back[1] <= 2);
+  CHECK(back[2] <= 2);
 }
 
 /// 601 and 709 have different luma coefficients, so a saturated colour must
@@ -259,13 +319,13 @@ void colourSpacesAreNotInterchangeable() {
   std::vector<uint8_t> a;
   PixelFormat af;
   int as;
-  CHECK(convert(src, PixelFormat::uyvy8, af, a, as, err));
+  CHECK(convert(src, PixelFormat::uyvy8, af, outRange, a, as, err));
 
   src.colour = ColourSpace::bt601;
   std::vector<uint8_t> b;
   PixelFormat bf;
   int bs;
-  CHECK(convert(src, PixelFormat::uyvy8, bf, b, bs, err));
+  CHECK(convert(src, PixelFormat::uyvy8, bf, outRange, b, bs, err));
 
   // Green's luma is 0.7152 under 709 and 0.587 under 601 — a large gap.
   CHECK(a[1] != b[1]);
@@ -285,7 +345,7 @@ void oddWidthsDoNotOverrun() {
     std::vector<uint8_t> out;
     PixelFormat of;
     int os;
-    CHECK(convert(src, to, of, out, os, err));
+    CHECK(convert(src, to, of, outRange, out, os, err));
     CHECK_EQ(out.size(), static_cast<size_t>(os) * 3);
     CHECK_EQ(os, tightStrideBytes(to, 7));
   }
@@ -299,12 +359,12 @@ void unsupportedPairsFailLoudly() {
   PixelFormat of;
   int os;
   std::string err;
-  CHECK(!convert(src, PixelFormat::ycbcr422_10_pgroup, of, out, os, err));
+  CHECK(!convert(src, PixelFormat::ycbcr422_10_pgroup, of, outRange, out, os, err));
   CHECK(!err.empty());
 
   err.clear();
   VideoFrame empty;
-  CHECK(!convert(empty, PixelFormat::uyvy8, of, out, os, err));
+  CHECK(!convert(empty, PixelFormat::uyvy8, of, outRange, out, os, err));
   CHECK(err.find("empty") != std::string::npos);
 }
 
@@ -348,7 +408,7 @@ void blackIsLegalBlackNotZero() {
   PixelFormat rf;
   int rs;
   std::string err;
-  CHECK(convert(vf, PixelFormat::bgra8, rf, rgb, rs, err));
+  CHECK(convert(vf, PixelFormat::bgra8, rf, outRange, rgb, rs, err));
   CHECK(rgb[0] <= 2);
   CHECK(rgb[1] <= 2);
   CHECK(rgb[2] <= 2);
@@ -368,7 +428,7 @@ void canConvertMatchesWhatConvertActuallyDoes() {
     int os;
     std::string err;
     const bool claimed = canConvert(PixelFormat::bgra8, to);
-    const bool actual = convert(src, to, of, out, os, err);
+    const bool actual = convert(src, to, of, outRange, out, os, err);
     // The router trusts canConvert when it plans a `convert` action, so a
     // disagreement here is a route that is planned and then fails at runtime.
     CHECK_EQ(claimed, actual);
@@ -381,7 +441,8 @@ void run() {
   channelsAreNotSwapped();
   v210CarriesMoreThanEightBits();
   uyvyAndYuy2AreTheSameDataReordered();
-  narrowAndFullRangeDiffer();
+  rgbAlwaysEncodesToNarrowYcbcr();
+  ycbcrToRgbIsAlwaysFullRange();
   colourSpacesAreNotInterchangeable();
   oddWidthsDoNotOverrun();
   unsupportedPairsFailLoudly();

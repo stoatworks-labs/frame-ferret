@@ -163,10 +163,11 @@ void Engine::serveTick(int64_t tick) {
     }
 
     PixelFormat outFormat;
+    QuantRange outRange = QuantRange::unknown;
     int outStride = 0;
     std::string error;
-    if (!convert(frame, action.targetFormat, outFormat, convertScratch_,
-                 outStride, error)) {
+    if (!convert(frame, action.targetFormat, outFormat, outRange,
+                 convertScratch_, outStride, error)) {
       // A conversion the router planned and the converter refused. Black, with
       // the converter's own message, rather than a silently skipped output.
       sink->sendBlack();
@@ -177,6 +178,9 @@ void Engine::serveTick(int64_t tick) {
 
     VideoFrame converted = frame;
     converted.format = outFormat;
+    // The range may have been normalised — an RGB source becomes narrow YCbCr
+    // — so the frame must be relabelled or the sink encodes it a second time.
+    converted.range = outRange;
     converted.data = convertScratch_.data();
     converted.strideBytes = outStride;
     sink->send(converted);

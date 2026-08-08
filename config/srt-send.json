@@ -1,0 +1,10 @@
+{
+  "rate": "25",
+  "control": { "bind": "127.0.0.1", "port": 8740 },
+  "nodes": [
+    { "id": "bars", "kind": "test", "width": 640, "height": 360, "rate": "25" },
+    { "id": "srtout", "kind": "srt", "target": "srt://0.0.0.0:9720?mode=listener&latency=120", "width": 640, "height": 360, "rate": "25" },
+    { "id": "monitor", "kind": "preview", "width": 640, "height": 360 }
+  ],
+  "routes": { "srtout": "bars", "monitor": "bars" }
+}

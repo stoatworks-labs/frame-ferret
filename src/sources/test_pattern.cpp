@@ -60,7 +60,10 @@ class TestPatternSource : public Source {
     f.strideBytes = stride_;
     f.data = pixels_.data();
     f.format = PixelFormat::bgra8;
-    f.colour = ColourSpace::bt709;
+    // The same raster rule the NDI and OMT receivers use to infer an untagged
+    // source. Claiming 709 at every size made the generator disagree with every
+    // consumer below 720 lines.
+    f.colour = config_.height >= 720 ? ColourSpace::bt709 : ColourSpace::bt601;
     // A generated RGB pattern is full range. Declaring it narrow is the exact
     // mistake that produces washed-out bars downstream.
     f.range = QuantRange::full;

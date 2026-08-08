@@ -98,28 +98,27 @@ bool buildNodes(const AppConfig& config, Engine& engine,
       }
 
       case NodeKind::srt: {
-        // Receive only for now. An SRT *sink* needs an encoder and a muxer,
-        // which is the other half of this work — see docs/ROADMAP.md. A node
-        // that is not used as somebody's source would therefore be a sender we
-        // cannot build, so say that rather than constructing something inert.
+        // Direction from the routes, as for NDI and OMT: a node named as some
+        // sink's source is a receiver, anything else is a sender.
         bool usedAsSource = false;
         for (const auto& [sinkId, sourceId] : config.routes) {
           if (sourceId == node.id) usedAsSource = true;
         }
-        if (!usedAsSource) {
-          failures.push_back(
-              {node.id,
-               "SRT sending is not implemented yet — it needs an H.264 encoder "
-               "and a TS muxer. SRT receiving works; route this node into a "
-               "sink to use it"});
-          continue;
+        if (usedAsSource) {
+          auto source = makeSrtSource(node, reason);
+          if (!source) {
+            failures.push_back({node.id, reason});
+            continue;
+          }
+          engine.addSource(std::move(source), PixelFormat::uyvy8);
+        } else {
+          auto sink = makeSrtSink(node, reason);
+          if (!sink) {
+            failures.push_back({node.id, reason});
+            continue;
+          }
+          engine.addSink(std::move(sink));
         }
-        auto source = makeSrtSource(node, reason);
-        if (!source) {
-          failures.push_back({node.id, reason});
-          continue;
-        }
-        engine.addSource(std::move(source), PixelFormat::uyvy8);
         ++built;
         break;
       }

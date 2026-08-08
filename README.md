@@ -69,7 +69,7 @@ Honest, and it will stay honest as this grows.
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. **No SRT node yet:** it needs an encoder |
 | **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly |
-| SRT send (encode) | **Not started** |
+| **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools |
 | **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
 | **DeckLink output** | **Built, optional at build time.** Prefers v210 so 10 bits reach the card. **Never run against a card from this codebase** — no DeckLink was attached while it was written |
 | ST 2110 | **Not started.** Designed only |
@@ -142,7 +142,23 @@ Frame Ferret received all **129,156 bytes byte-for-byte**, decoded them through
 an external ffmpeg, and rendered all seven SMPTE bars at the right levels in
 the right channel order.
 
-**SRT sending is still not written** — it needs an H.264 encoder and a TS muxer.
+**SRT send, verified end to end.** Frame Ferret encodes with
+`h264_videotoolbox`, muxes to MPEG-TS and listens on SRT;
+`srt-live-transmit` pulls the stream and ffmpeg decodes it back to a still. All
+eight bars land **within 2 code values** — through a lossy H.264 round trip.
+
+Getting there fixed two real colour bugs, both of which had left hues and bar
+order perfect while the values were wrong, which is the hardest way for a
+colour fault to present:
+
+- **Range.** An RGB source was encoded as full-range YCbCr and the receiver
+  expanded it again — green came back at 240 instead of 191. `convert()` now
+  reports the range it produced and normalises RGB sources to narrow, which is
+  what every transport here expects.
+- **Matrix.** rawvideo carries no colorimetry, so ffmpeg guesses **BT.601
+  below 720 lines**. Sending it 709 data at 640x360 without saying so skewed
+  every saturated colour while white and black stayed exact. Both input and
+  output are now tagged explicitly.
 
 SRT is the **only transport here that can genuinely bind to a chosen
 interface**: `srt_bind()` takes a real address, where NDI and OMT have no such

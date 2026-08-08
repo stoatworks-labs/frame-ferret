@@ -379,7 +379,8 @@ bool canConvert(PixelFormat from, PixelFormat to) {
 }
 
 bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
-             std::vector<uint8_t>& dst, int& dstStride, std::string& error) {
+             QuantRange& outRange, std::vector<uint8_t>& dst, int& dstStride,
+             std::string& error) {
   if (!src.data || src.width <= 0 || src.height <= 0) {
     error = "source frame is empty";
     return false;
@@ -390,8 +391,20 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
     return false;
   }
 
+  const bool srcIsRgb = describe(src.format).isRgb;
+  const bool dstIsRgb = describe(to).isRgb;
+
+  // The 10-bit 4:2:2 intermediate is narrow whenever the source is RGB, so an
+  // RGB source lands on the broadcast convention rather than carrying its full
+  // range into a YCbCr transport. A YCbCr source keeps whatever it arrived as.
+  const QuantRange intermediate =
+      srcIsRgb ? QuantRange::narrow
+               : (src.range == QuantRange::unknown ? QuantRange::narrow
+                                                   : src.range);
+  outRange = dstIsRgb ? QuantRange::full : intermediate;
+
   const LumaCoefficients k = coefficientsFor(src.colour);
-  const Scaling s10 = scalingFor(src.range, 10);
+  const Scaling s10 = scalingFor(intermediate, 10);
   const FixedCoeffs coeffs = makeCoeffs(k, s10);
 
   dstStride = tightStrideBytes(to, src.width);

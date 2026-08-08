@@ -59,9 +59,9 @@ API** and a live-mode receiver correctly rejects it with
 "MessageAPI/StreamAPI collision"; **`srt-live-transmit` only bridges UDP↔SRT**
 and refuses `file://` at both ends. See `tools/srtsend/README.md`.
 
-**SRT sending is not written at all** — it needs an encoder and a TS muxer.
-A node not used as some sink's source therefore reports that rather than
-constructing something inert.
+**SRT send is verified too**: encoded with `h264_videotoolbox`, muxed to
+MPEG-TS, pulled off with `srt-live-transmit` and decoded by ffmpeg — all eight
+bars within 2 code values through a lossy H.264 round trip.
 
 Note SRT **can** bind to a chosen interface — `srt_bind()` takes a real address
 and there is SRTO_BINDTODEVICE — which makes it the first transport here where
@@ -159,6 +159,15 @@ Carried forward from the fleet, because these will be hit again here.
   memory — while SRTO_STREAMID has no explicit value in the header at all, so
   no amount of reading finds it. A wrong option number does not fail; it sets a
   different option.
+- **`convert()` normalises quantisation RANGE, and its `outRange` must be
+  applied to the frame.** An RGB source becomes narrow YCbCr, because every
+  transport here carries narrow by convention; an RGB destination is full. Drop
+  the relabelling and the receiver expands the range a second time — green came
+  back at 240 instead of 191 over SRT, with hues and bar order perfect.
+- **rawvideo has no colorimetry and ffmpeg guesses BT.601 below 720 lines.**
+  Always tag `-colorspace`/`-color_primaries`/`-color_trc`/`-color_range` on
+  BOTH the input and the output. Untagged 709 data at 640x360 encodes as 601:
+  white and black stay exact while every saturated colour skews.
 - **Conversion is on the critical path and must stay integer.** It was `double`
   with `std::lround` per component and cost 29.7 ms for a 1280x720 UYVY->BGRA
   frame — a 33.6 fps ceiling that showed up as an OMT receiver at 19 fps. Now

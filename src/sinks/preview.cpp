@@ -54,14 +54,16 @@ void PreviewSink::send(const VideoFrame& frame) {
     // Convert into BGRA first. The preview is the one place a conversion is
     // always acceptable: it is a display path, not a signal path.
     PixelFormat outFmt;
+    QuantRange outRange = QuantRange::unknown;
     int outStride;
     std::string error;
-    if (!convert(frame, PixelFormat::bgra8, outFmt, convertScratch_, outStride,
-                 error)) {
+    if (!convert(frame, PixelFormat::bgra8, outFmt, outRange, convertScratch_,
+                 outStride, error)) {
       return;
     }
     VideoFrame asRgb = frame;
     asRgb.format = outFmt;
+    asRgb.range = outRange;
     asRgb.data = convertScratch_.data();
     asRgb.strideBytes = outStride;
     storeScaled(asRgb);

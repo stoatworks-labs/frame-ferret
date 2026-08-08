@@ -64,10 +64,10 @@ Still to do here: a ten-minute soak, and audio actually verified.
   `transports/ffmpeg.*` are built and verified; hardware encoders are preferred
   where present.
 
-  **Receive is done and verified** against `tools/srtsend`, built on srt-tokio
-  — an independent SRT implementation. Sending is still to write: it needs an
-  H.264 encoder and a TS muxer, which is the same ffmpeg subprocess pointed the
-  other way.
+  **Both directions done and verified.** Receive against `tools/srtsend` (built
+  on srt-tokio, an independent SRT stack); send by pulling the stream with
+  `srt-live-transmit` and decoding it with ffmpeg — all eight bars within 2
+  code values through H.264.
 
 - **DeckLink out ✅ written**, optional behind `-DDECKLINK_SDK_DIR`. Lifted from
   oxbow's Duo 2-verified sequence, prefers v210. **Never run against a card

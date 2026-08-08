@@ -27,4 +27,17 @@ namespace ferret {
 std::unique_ptr<Source> makeSrtSource(const NodeConfig& config,
                                       std::string& error);
 
+/// An SRT sink: frames encoded to H.264 and muxed to MPEG-TS by an external
+/// ffmpeg, then sent over SRT.
+///
+/// The encoder is chosen by `Ffmpeg::bestH264Encoder`, hardware first — on
+/// Apple silicon that is `h264_videotoolbox`, which matters because the frame
+/// loop is already serving every other sink from one thread.
+///
+/// `config.target` is the same SRT URL the source takes. A sender usually
+/// wants `mode=listener`, so decoders call in to it; that is independent of
+/// which way the video flows and catches people out.
+std::unique_ptr<Sink> makeSrtSink(const NodeConfig& config,
+                                  std::string& error);
+
 }  // namespace ferret
