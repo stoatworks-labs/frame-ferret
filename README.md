@@ -11,6 +11,10 @@
 > documented but not implemented, and no hardware output exists on any
 > platform. See [Status](#status).
 
+[![Frame Ferret](docs/video-thumb.png)](https://www.youtube.com/watch?v=7jppEKgBDLk)
+
+*Sixty seconds of the real thing — the crosspoint being switched live, with NDI, ST 2110 and Syphon all publishing.*
+
 A software virtual capture card. One application that is an **NDI, OMT, SRT and
 ST 2110 endpoint** — transmitting and receiving — over a chosen network
 interface, that can capture this machine's screen, and that presents itself to
