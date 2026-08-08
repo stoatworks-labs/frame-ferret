@@ -31,7 +31,10 @@ class Dylib {
 
   bool isOpen() const { return handle_ != nullptr; }
 
-  /// Path or name that actually opened, for logging and the control API.
+  /// The path the loader **actually** opened — not merely the candidate we
+  /// asked for. The two differ whenever DYLD_LIBRARY_PATH (macOS) or
+  /// LD_LIBRARY_PATH redirects a leaf name, and this value is shown to
+  /// operators, so it has to be the real file.
   const std::string& loadedPath() const { return loadedPath_; }
 
   /// Why the last open() failed, joined across candidates.
@@ -58,6 +61,9 @@ class Dylib {
   static std::vector<std::string> localSearchPaths();
 
  private:
+  /// Replaces the provisional candidate string with the real path.
+  void resolveRealPath();
+
   void* handle_ = nullptr;
   std::string loadedPath_;
   std::string lastError_;

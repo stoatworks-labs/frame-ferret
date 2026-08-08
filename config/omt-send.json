@@ -1,0 +1,34 @@
+{
+  "rate": "50",
+  "control": {
+    "bind": "127.0.0.1",
+    "port": 8740
+  },
+  "nodes": [
+    {
+      "id": "bars",
+      "kind": "test",
+      "width": 1280,
+      "height": 720,
+      "rate": "50"
+    },
+    {
+      "id": "omtout",
+      "kind": "omt",
+      "target": "Frame Ferret",
+      "width": 1280,
+      "height": 720,
+      "rate": "50"
+    },
+    {
+      "id": "monitor",
+      "kind": "preview",
+      "width": 1280,
+      "height": 720
+    }
+  ],
+  "routes": {
+    "omtout": "bars",
+    "monitor": "bars"
+  }
+}

@@ -2,6 +2,7 @@
 
 #include "sources/test_pattern.h"
 #include "transports/ndi.h"
+#include "transports/omt.h"
 
 namespace ferret {
 
@@ -10,6 +11,7 @@ bool isImplemented(NodeKind kind) {
     case NodeKind::testPattern:
     case NodeKind::preview:
     case NodeKind::ndi:
+    case NodeKind::omt:
       return true;
     default:
       return false;
@@ -22,6 +24,15 @@ namespace {
 void checkUnhonouredSettings(const NodeConfig& node,
                              std::vector<NodeFailure>& warnings) {
   if (node.interfaceSelector.empty()) return;
+
+  if (node.kind == NodeKind::omt && !kOmtSupportsInterfaceBinding) {
+    warnings.push_back(
+        {node.id,
+         "\"interface\": \"" + node.interfaceSelector +
+             "\" cannot be applied to an OMT node — libomt exposes no "
+             "interface selector, the same limitation NDI has."});
+    return;
+  }
 
   if (node.kind == NodeKind::ndi && !kNdiSupportsInterfaceBinding) {
     warnings.push_back(
@@ -76,6 +87,32 @@ bool buildNodes(const AppConfig& config, Engine& engine,
         auto sink = std::make_unique<PreviewSink>(node);
         previews.push_back(sink.get());
         engine.addSink(std::move(sink));
+        ++built;
+        break;
+      }
+
+      case NodeKind::omt: {
+        bool usedAsSource = false;
+        for (const auto& [sinkId, sourceId] : config.routes) {
+          if (sourceId == node.id) usedAsSource = true;
+        }
+
+        if (usedAsSource) {
+          auto source = makeOmtSource(node, reason);
+          if (!source) {
+            failures.push_back({node.id, reason});
+            continue;
+          }
+          // Asked for UYVYorBGRA, so 4:2:2 sources arrive untouched.
+          engine.addSource(std::move(source), PixelFormat::uyvy8);
+        } else {
+          auto sink = makeOmtSink(node, reason);
+          if (!sink) {
+            failures.push_back({node.id, reason});
+            continue;
+          }
+          engine.addSink(std::move(sink));
+        }
         ++built;
         break;
       }

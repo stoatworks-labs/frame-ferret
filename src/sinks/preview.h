@@ -56,6 +56,13 @@ class PreviewSink : public Sink {
 
   NodeConfig config_;
 
+  // Reused across frames. A 1280x720 BGRA conversion is 3.7 MB, and
+  // allocating that twice per frame — once for the conversion, once for the
+  // scaled copy — measured as more of the frame budget than the conversion
+  // itself. The engine already learned this with its own scratch buffer.
+  std::vector<uint8_t> convertScratch_;
+  std::vector<uint8_t> scaleScratch_;
+
   mutable std::mutex mutex_;
   std::vector<uint8_t> bgra_;  ///< previewW_ x previewH_, top-down BGRA
   int previewW_ = 0;

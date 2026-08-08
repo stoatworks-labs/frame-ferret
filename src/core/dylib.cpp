@@ -11,6 +11,11 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#elif !defined(_WIN32)
+#include <link.h>
+#endif
 #endif
 
 #if defined(__APPLE__)
@@ -116,7 +121,10 @@ bool Dylib::open(const std::vector<std::string>& candidates) {
     handle_ = dlopen(candidate.c_str(), RTLD_LAZY | RTLD_LOCAL);
 #endif
     if (handle_ != nullptr) {
+      // Provisional. This is the path we *asked* for, which is not necessarily
+      // the file the loader opened — see resolveRealPath().
       loadedPath_ = candidate;
+      resolveRealPath();
       return true;
     }
     if (!lastError_.empty()) {
@@ -125,6 +133,51 @@ bool Dylib::open(const std::vector<std::string>& candidates) {
     lastError_ += candidate + ": " + lastLoaderError();
   }
   return false;
+}
+
+void Dylib::resolveRealPath() {
+  // The candidate string is what we asked for; it can differ from what the
+  // loader actually opened. On macOS, DYLD_LIBRARY_PATH is searched by *leaf
+  // name* ahead of the path given to dlopen, so asking for
+  // "<exedir>/libomt.dylib" can legitimately open
+  // "~/.local/lib/omt/libomt.dylib" — and reporting the first one sends any
+  // "which runtime is this actually using?" investigation to a file that does
+  // not exist. That is exactly what happened when OMT was first wired up.
+  //
+  // The path is reported through the control API, so it has to be the truth.
+#if defined(_WIN32)
+  char buffer[MAX_PATH] = {0};
+  if (GetModuleFileNameA(static_cast<HMODULE>(handle_), buffer,
+                         sizeof(buffer)) > 0) {
+    loadedPath_ = buffer;
+  }
+#elif defined(__APPLE__)
+  // dladdr needs an address inside the image, and at this point no symbol has
+  // been resolved. Scanning the loaded-image list by leaf name is the reliable
+  // way to answer before the first dlsym.
+  const size_t slash = loadedPath_.find_last_of('/');
+  const std::string leaf =
+      slash == std::string::npos ? loadedPath_ : loadedPath_.substr(slash + 1);
+  const uint32_t count = _dyld_image_count();
+  for (uint32_t i = 0; i < count; ++i) {
+    const char* name = _dyld_get_image_name(i);
+    if (!name) continue;
+    const std::string image(name);
+    const size_t imageSlash = image.find_last_of('/');
+    const std::string imageLeaf =
+        imageSlash == std::string::npos ? image : image.substr(imageSlash + 1);
+    if (imageLeaf == leaf) {
+      loadedPath_ = image;
+      return;
+    }
+  }
+#else
+  link_map* map = nullptr;
+  if (dlinfo(handle_, RTLD_DI_LINKMAP, &map) == 0 && map && map->l_name &&
+      *map->l_name) {
+    loadedPath_ = map->l_name;
+  }
+#endif
 }
 
 void Dylib::close() {

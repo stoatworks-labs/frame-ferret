@@ -30,6 +30,68 @@ Scaling scalingFor(QuantRange range, int bits) {
   return {16.0 * unit, 219.0 * unit, 128.0 * unit, 224.0 * unit};
 }
 
+/// Fixed-point coefficients for one (colour space, range) pair, computed once
+/// per convert() call.
+///
+/// The first cut of this file did the whole thing in `double`, normalising to
+/// 0..1 and back with std::lround per component. It was correct and it cost
+/// **29.7 ms for a 1280x720 UYVY->BGRA frame** — a 33.6 fps ceiling, measured,
+/// which showed up as an OMT receiver stuck at 19 fps with every tick late.
+/// Conversion is on the critical path for every route the router marks
+/// `convert`, so it has to be integer.
+///
+/// 16 fractional bits: enough that the round trip stays inside the 2-code-value
+/// tolerance the colour-bar test asserts, and small enough that intermediates
+/// stay well inside int32 for 10-bit inputs.
+struct FixedCoeffs {
+  int32_t yGain;    // (y - yOffset) -> 8-bit luma contribution
+  int32_t crToR;
+  int32_t cbToB;
+  int32_t cbToG;
+  int32_t crToG;
+  int32_t yOffset;
+  int32_t cOffset;
+
+  // Forward direction (RGB -> YCbCr), 8-bit in, 10-bit out.
+  int32_t kr, kg, kb;    // luma weights
+  int32_t cbScale, crScale;
+  int32_t yScaleFwd, yOffsetFwd;
+};
+
+constexpr int kShift = 16;
+constexpr int32_t kOne = 1 << kShift;
+
+FixedCoeffs makeCoeffs(const LumaCoefficients& k, const Scaling& s) {
+  FixedCoeffs c{};
+  const double toByte = 255.0;
+
+  c.yOffset = static_cast<int32_t>(s.yOffset);
+  c.cOffset = static_cast<int32_t>(s.cOffset);
+
+  c.yGain = static_cast<int32_t>((toByte / s.yScale) * kOne);
+  c.crToR = static_cast<int32_t>((toByte * 2.0 * (1.0 - k.kr) / s.cScale) * kOne);
+  c.cbToB = static_cast<int32_t>((toByte * 2.0 * (1.0 - k.kb) / s.cScale) * kOne);
+  c.cbToG = static_cast<int32_t>(
+      (toByte * 2.0 * (1.0 - k.kb) * k.kb / (k.kg() * s.cScale)) * kOne);
+  c.crToG = static_cast<int32_t>(
+      (toByte * 2.0 * (1.0 - k.kr) * k.kr / (k.kg() * s.cScale)) * kOne);
+
+  c.kr = static_cast<int32_t>(k.kr * kOne);
+  c.kg = static_cast<int32_t>(k.kg() * kOne);
+  c.kb = static_cast<int32_t>(k.kb * kOne);
+  c.yScaleFwd = static_cast<int32_t>((s.yScale / toByte) * kOne);
+  c.yOffsetFwd = static_cast<int32_t>(s.yOffset);
+  c.cbScale = static_cast<int32_t>(
+      (s.cScale / (2.0 * (1.0 - k.kb) * toByte)) * kOne);
+  c.crScale = static_cast<int32_t>(
+      (s.cScale / (2.0 * (1.0 - k.kr) * toByte)) * kOne);
+  return c;
+}
+
+inline uint8_t clampByte(int32_t v) {
+  return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
+}
+
 struct Rgb {
   double r, g, b;  // 0..1
 };
@@ -150,7 +212,52 @@ void readV210(const uint8_t* src, int width, Row422& out) {
 }
 
 void readBgraLike(const uint8_t* src, int width, bool bgra,
-                  const LumaCoefficients& k, const Scaling& s, Row422& out) {
+                  const FixedCoeffs& c, Row422& out) {
+  // Integer RGB -> YCbCr. Chroma is averaged across each pair before
+  // subsampling; dropping the odd pixel's chroma instead is cheaper and
+  // visibly worse on saturated vertical edges, which is what test patterns are
+  // made of.
+  for (int x = 0; x < width; x += 2) {
+    int64_t cbSum = 0, crSum = 0;
+    int n = 0;
+    for (int i = 0; i < 2 && x + i < width; ++i) {
+      const uint8_t* p = src + static_cast<size_t>(x + i) * 4;
+      const int32_t r = bgra ? p[2] : p[0];
+      const int32_t g = p[1];
+      const int32_t b = bgra ? p[0] : p[2];
+
+      // Luma kept in 16.16 throughout. Truncating it to a whole 8-bit value
+      // first — as the first integer draft did — loses precision twice, once
+      // here and again when scaling to 10-bit, and the grey round-trip test
+      // caught it immediately at 2 code values of drift.
+      const int32_t yFix = c.kr * r + c.kg * g + c.kb * b;  // 16.16, 0..255
+
+      // 16.16 * 16.16 -> 32.32, rounded. int64 because the product overflows
+      // int32 for any realistic luma.
+      out.y[x + i] = static_cast<uint16_t>(
+          c.yOffsetFwd +
+          static_cast<int32_t>((static_cast<int64_t>(yFix) * c.yScaleFwd +
+                                (int64_t{1} << 31)) >> 32));
+
+      cbSum += (b << kShift) - yFix;
+      crSum += (r << kShift) - yFix;
+      ++n;
+    }
+    const int cIdx = x / 2;
+    const int32_t cbAvg = cbSum / n;
+    const int32_t crAvg = crSum / n;
+    int32_t cb = c.cOffset + static_cast<int32_t>(
+        (static_cast<int64_t>(cbAvg) * c.cbScale + (int64_t{1} << 31)) >> 32);
+    int32_t cr = c.cOffset + static_cast<int32_t>(
+        (static_cast<int64_t>(crAvg) * c.crScale + (int64_t{1} << 31)) >> 32);
+    out.cb[cIdx] = static_cast<uint16_t>(cb < 0 ? 0 : (cb > 1023 ? 1023 : cb));
+    out.cr[cIdx] = static_cast<uint16_t>(cr < 0 ? 0 : (cr > 1023 ? 1023 : cr));
+  }
+}
+
+void readBgraLikeSlow(const uint8_t* src, int width, bool bgra,
+                      const LumaCoefficients& k, const Scaling& s,
+                      Row422& out) {
   // Chroma is averaged across each pair before subsampling. Dropping the odd
   // pixel's chroma instead is cheaper and visibly worse on saturated vertical
   // edges, which is exactly what test patterns are made of.
@@ -220,22 +327,26 @@ void writeV210(const Row422& in, int width, uint8_t* dst) {
 }
 
 void writeBgraLike(const Row422& in, int width, bool bgra,
-                   const LumaCoefficients& k, const Scaling& s, uint8_t* dst) {
+                   const FixedCoeffs& c, uint8_t* dst) {
   for (int x = 0; x < width; ++x) {
-    const int c = x / 2;
-    const Ycc ycc{(in.y[x] - s.yOffset) / s.yScale,
-                  (in.cb[c] - s.cOffset) / s.cScale,
-                  (in.cr[c] - s.cOffset) / s.cScale};
-    const Rgb rgb = yccToRgb(ycc, k);
+    const int ci = x / 2;
+    const int32_t y = (static_cast<int32_t>(in.y[x]) - c.yOffset) * c.yGain;
+    const int32_t cb = static_cast<int32_t>(in.cb[ci]) - c.cOffset;
+    const int32_t cr = static_cast<int32_t>(in.cr[ci]) - c.cOffset;
+
+    // + half an LSB so this rounds rather than truncates; without it every
+    // channel drifts consistently downwards through a round trip.
+    constexpr int32_t kHalf = 1 << (kShift - 1);
+    const uint8_t r = clampByte((y + cr * c.crToR + kHalf) >> kShift);
+    const uint8_t g =
+        clampByte((y - cb * c.cbToG - cr * c.crToG + kHalf) >> kShift);
+    const uint8_t b = clampByte((y + cb * c.cbToB + kHalf) >> kShift);
+
     uint8_t* p = dst + static_cast<size_t>(x) * 4;
     if (bgra) {
-      p[0] = clamp8(rgb.b * 255.0);
-      p[1] = clamp8(rgb.g * 255.0);
-      p[2] = clamp8(rgb.r * 255.0);
+      p[0] = b; p[1] = g; p[2] = r;
     } else {
-      p[0] = clamp8(rgb.r * 255.0);
-      p[1] = clamp8(rgb.g * 255.0);
-      p[2] = clamp8(rgb.b * 255.0);
+      p[0] = r; p[1] = g; p[2] = b;
     }
     p[3] = 255;
   }
@@ -280,8 +391,8 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
   }
 
   const LumaCoefficients k = coefficientsFor(src.colour);
-  const Scaling s8 = scalingFor(src.range, 8);
   const Scaling s10 = scalingFor(src.range, 10);
+  const FixedCoeffs coeffs = makeCoeffs(k, s10);
 
   dstStride = tightStrideBytes(to, src.width);
   dst.resize(static_cast<size_t>(dstStride) * src.height);
@@ -300,10 +411,10 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
       case PixelFormat::yuy2_8: readPacked8(sp, src.width, false, row); break;
       case PixelFormat::v210: readV210(sp, src.width, row); break;
       case PixelFormat::bgra8:
-        readBgraLike(sp, src.width, true, k, s10, row);
+        readBgraLike(sp, src.width, true, coeffs, row);
         break;
       case PixelFormat::rgba8:
-        readBgraLike(sp, src.width, false, k, s10, row);
+        readBgraLike(sp, src.width, false, coeffs, row);
         break;
       default:
         error = "unreadable source format";
@@ -316,10 +427,10 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
       case PixelFormat::yuy2_8: writePacked8(row, src.width, false, dp); break;
       case PixelFormat::v210: writeV210(row, src.width, dp); break;
       case PixelFormat::bgra8:
-        writeBgraLike(row, src.width, true, k, s10, dp);
+        writeBgraLike(row, src.width, true, coeffs, dp);
         break;
       case PixelFormat::rgba8:
-        writeBgraLike(row, src.width, false, k, s10, dp);
+        writeBgraLike(row, src.width, false, coeffs, dp);
         break;
       default:
         error = "unwritable destination format";
@@ -327,7 +438,6 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
     }
   }
 
-  (void)s8;
   return true;
 }
 

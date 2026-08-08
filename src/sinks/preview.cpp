@@ -53,16 +53,16 @@ void PreviewSink::send(const VideoFrame& frame) {
   } else {
     // Convert into BGRA first. The preview is the one place a conversion is
     // always acceptable: it is a display path, not a signal path.
-    std::vector<uint8_t> rgb;
     PixelFormat outFmt;
     int outStride;
     std::string error;
-    if (!convert(frame, PixelFormat::bgra8, outFmt, rgb, outStride, error)) {
+    if (!convert(frame, PixelFormat::bgra8, outFmt, convertScratch_, outStride,
+                 error)) {
       return;
     }
     VideoFrame asRgb = frame;
     asRgb.format = outFmt;
-    asRgb.data = rgb.data();
+    asRgb.data = convertScratch_.data();
     asRgb.strideBytes = outStride;
     storeScaled(asRgb);
   }
@@ -98,7 +98,9 @@ void PreviewSink::storeScaled(const VideoFrame& frame) {
   previewSize(frame.width, frame.height, &pw, &ph);
   if (pw <= 0 || ph <= 0) return;
 
-  std::vector<uint8_t> scaled(static_cast<size_t>(pw) * ph * 4);
+  const size_t needed = static_cast<size_t>(pw) * ph * 4;
+  if (scaleScratch_.size() != needed) scaleScratch_.resize(needed);
+  std::vector<uint8_t>& scaled = scaleScratch_;
 
   // Nearest neighbour. This is a monitoring thumbnail, and a box filter here
   // would cost more than the conversion that produced the frame.
@@ -118,7 +120,10 @@ void PreviewSink::storeScaled(const VideoFrame& frame) {
   std::lock_guard<std::mutex> lock(mutex_);
   previewW_ = pw;
   previewH_ = ph;
-  bgra_.swap(scaled);
+  // Copy rather than swap: scaleScratch_ must keep its capacity for the next
+  // frame, and swapping would hand it away and take back bgra_'s buffer,
+  // reallocating on every geometry change.
+  bgra_.assign(scaled.begin(), scaled.end());
 }
 
 bool PreviewSink::encodeBmp(std::vector<uint8_t>& out) const {

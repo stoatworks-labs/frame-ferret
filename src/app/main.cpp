@@ -16,6 +16,8 @@
 #include "control/control_api.h"
 #include "control/http_server.h"
 #include "net/interfaces.h"
+#include "transports/ndi.h"
+#include "transports/omt.h"
 
 namespace {
 
@@ -173,6 +175,14 @@ int cmdRun(const std::string& configPath) {
                 server.port());
   }
 
+  // Signal handlers go in HERE, after prepare() has built every node — never
+  // earlier. libomt embeds the .NET runtime, and .NET installs its own
+  // SIGINT/SIGTERM handlers when it starts, which is on first OMT
+  // sender/receiver creation inside buildNodes. Anything registered before
+  // that is silently overwritten: Ctrl-C stops working and the process lingers
+  // holding OMT's port, after which the *next* sender announces itself while
+  // the zombie still owns it, so receivers connect to a source that never
+  // sends. Moving these two lines above prepare() reintroduces all of that.
   std::signal(SIGINT, onSignal);
   std::signal(SIGTERM, onSignal);
   std::printf("Running at %s fps. Ctrl-C to stop.\n",
@@ -275,6 +285,46 @@ int cmdSelftest() {
   return failed == 0 ? 0 : 1;
 }
 
+int cmdSources(const std::string& protocol) {
+  int failures = 0;
+
+  if (protocol.empty() || protocol == "ndi") {
+    std::string error;
+    if (!ferret::NdiRuntime::available()) {
+      std::printf("ndi: unavailable — %s\n",
+                  ferret::NdiRuntime::unavailableReason().c_str());
+      ++failures;
+    } else {
+      const auto sources = ferret::ndiListSources(2000, error);
+      std::printf("ndi (%s):\n", ferret::NdiRuntime::loadedPath().c_str());
+      if (sources.empty()) std::printf("  (none visible)\n");
+      for (const auto& s : sources) std::printf("  %s\n", s.c_str());
+    }
+  }
+
+  if (protocol.empty() || protocol == "omt") {
+    std::string error;
+    if (!ferret::OmtRuntime::available()) {
+      std::printf("omt: unavailable — %s\n",
+                  ferret::OmtRuntime::unavailableReason().c_str());
+      ++failures;
+    } else {
+      const auto sources = ferret::omtListSources(error);
+      std::printf("omt (%s):\n", ferret::OmtRuntime::loadedPath().c_str());
+      if (sources.empty()) {
+        std::printf("  (none visible)%s\n",
+                    error.empty() ? "" : (" — " + error).c_str());
+        std::printf(
+            "  OMT discovery lists only senders it has learned about. A "
+            "receiver can always connect directly with omt://host:port.\n");
+      }
+      for (const auto& s : sources) std::printf("  %s\n", s.c_str());
+    }
+  }
+
+  return failures > 0 && protocol.empty() ? 0 : (failures ? 1 : 0);
+}
+
 int usage() {
   std::printf(
       "Frame Ferret %s — a virtual capture card.\n"
@@ -283,6 +333,7 @@ int usage() {
       "\n"
       "  run [--config <file>]   Run the engine and serve the control page\n"
       "  selftest                Drive colour bars through the frame path\n"
+      "  sources [--protocol X]  List NDI and OMT sources visible now\n"
       "  interfaces              List NICs available for binding, with speed\n"
       "  kinds                   List node kinds and the directions each takes\n"
       "  version                 Print the version\n"
@@ -306,6 +357,14 @@ int main(int argc, char** argv) {
   if (cmd == "interfaces") return cmdInterfaces();
   if (cmd == "kinds") return cmdKinds();
   if (cmd == "selftest") return cmdSelftest();
+  if (cmd == "sources") {
+    std::string protocol;
+    for (int i = 2; i < argc; ++i) {
+      const std::string arg = argv[i];
+      if (arg == "--protocol" && i + 1 < argc) protocol = argv[++i];
+    }
+    return cmdSources(protocol);
+  }
   if (cmd == "run") {
     std::string configPath;
     for (int i = 2; i < argc; ++i) {
