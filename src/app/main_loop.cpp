@@ -5,9 +5,19 @@
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
+extern "C" bool NSApplicationLoad(void);
 #endif
 
 namespace ferret {
+
+void initialiseWindowServer() {
+#if defined(__APPLE__)
+  static bool done = false;
+  if (done) return;
+  done = true;
+  NSApplicationLoad();
+#endif
+}
 
 void waitServicingMainLoop(double seconds) {
   if (seconds <= 0) return;

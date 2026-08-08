@@ -74,7 +74,7 @@ Honest, and it will stay honest as this grows.
 | **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
 | **ST 2110-20 send and receive** | **Built and verified against GStreamer's RFC 4175 implementation**, both directions, within 2 code values. Wide-profile sender, system-clocked — see below |
 | ST 2110-30 audio, -40 ancillary | **Not started** |
-| Screen / window / application capture | **Not started** |
+| **Display, window, application and ROI capture** (macOS) | **Built and run.** ScreenCaptureKit; region of interest is a source rect, so a crop costs nothing |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
@@ -183,6 +183,19 @@ Getting there needed the conversion made three times faster. BGRA to v210 at
 1080p cost 26.6 ms — a 38 fps ceiling — so the card ran at 34 fps with a third
 of its ticks late. Folding the colour coefficients and then fusing RGB to v210
 past the shared intermediate took it to **12.7 ms**.
+
+**Screen capture, on this machine.** A display at 1280x720p30 gave 175 frames of
+real desktop content; a named window gave 136 frames with zero black; and two
+different regions of the same display captured as genuinely different pictures,
+which is what proves the crop is applied rather than ignored.
+
+Two things about it worth knowing. **Without Screen Recording permission a
+capture starts successfully and delivers black frames forever** — no error, no
+callback, nothing in any log — so permission is checked up front and reported
+as the reason a node failed. And a plain C++ CLI must call `NSApplicationLoad()`
+before touching CoreGraphics: *window* capture asserted with
+`CGS_REQUIRE_INIT` on first run while *display* capture worked, because only
+the window path reaches that code.
 
 **ST 2110-20, both directions, against an independent implementation.**
 GStreamer's `rtpvrawdepay` decoded 143 frames of Frame Ferret's stream with a

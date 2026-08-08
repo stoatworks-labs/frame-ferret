@@ -29,6 +29,7 @@ add_library(ferret_core STATIC
   src/core/rational.cpp
   src/core/convert.cpp
   src/sources/test_pattern.cpp
+  src/sources/screen_capture_stub.cpp
   src/sinks/preview.cpp
   src/sinks/decklink.cpp
   src/sinks/syphon_stub.cpp
@@ -63,6 +64,13 @@ endif()
 # ---------------------------------------------------------------------------
 if(APPLE)
   target_sources(ferret_core PRIVATE src/sinks/syphon.mm)
+  # ScreenCaptureKit: display, window, application and region capture.
+  target_sources(ferret_core PRIVATE src/sources/screen_capture.mm)
+  set_source_files_properties(src/sources/screen_capture.mm PROPERTIES
+    COMPILE_OPTIONS "-fobjc-arc")
+  target_link_libraries(ferret_core PUBLIC
+    "-framework ScreenCaptureKit" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework CoreGraphics")
   set(FERRET_SYPHON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/syphon/Syphon)
   file(GLOB FERRET_SYPHON_OBJC ${FERRET_SYPHON_DIR}/*.m)
   file(GLOB FERRET_SYPHON_C    ${FERRET_SYPHON_DIR}/*.c)

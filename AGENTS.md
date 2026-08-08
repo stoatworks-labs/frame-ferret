@@ -99,9 +99,15 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   (`a=TP=2110TPW`). Frames are never marked `ptpLocked`. Do not upgrade that
   claim without hardware transmit pacing and a real PTP servo.
 
-**Not written at all.** ST 2110-30 audio and -40 ancillary, every capture
-source, DeckLink *capture*, Spout, the HTML output, the OS extensions, and the
-tray launcher. Do not describe any of it as working.
+- **Display, window, application and ROI capture (macOS), run on this
+  machine.** ScreenCaptureKit. A display gave 175 frames of real content, a
+  named window 136 with zero black, and two different regions captured as
+  genuinely different pictures — which is the check that proves the crop is
+  applied rather than silently ignored.
+
+**Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
+Spout, the HTML output, the OS extensions, and the tray launcher. Do not
+describe any of it as working.
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
@@ -157,6 +163,18 @@ Carried forward from the fleet, because these will be hit again here.
   receivers connect to a source that never sends.
 - **NDI's `BGRX_BGRA_flipped` receive format is Windows-only.** Elsewhere
   normalise rows at ingest.
+- **Screen Recording permission failing is INVISIBLE.** Without it SCStream
+  starts successfully and delivers black frames forever — no error, no
+  callback, no log line. `ScreenCapture::permitted()` checks up front by asking
+  for shareable content, and the node fails to build with the permission named.
+  Never remove that check on the grounds that the capture "starts fine".
+- **Call `initialiseWindowServer()` (NSApplicationLoad) before CoreGraphics.**
+  A plain C++ CLI has no Cocoa init, and *window* capture asserts with
+  `CGS_REQUIRE_INIT` while *display* capture works — only the window path
+  reaches that code, so this looks like a window-capture bug and is not.
+- **ScreenCaptureKit sends idle samples with no image** when the screen has not
+  changed. Check `SCStreamFrameInfoStatus` for `SCFrameStatusComplete`, or a
+  static desktop reads as a live source delivering at full rate.
 - **A Syphon server must be created on the main thread**, and **every
   main-thread wait must go through `waitServicingMainLoop`** (app/main_loop.h).
   On a private run loop the server is well-formed, announces itself, and is

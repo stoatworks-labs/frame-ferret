@@ -76,6 +76,14 @@ struct NodeConfig {
   int height = 1080;
   PixelFormat format = PixelFormat::unknown;  ///< unknown = node's own default.
 
+  /// A region of interest, in source pixels. Zero width or height means the
+  /// whole thing. Only the capture sources use it, and ScreenCaptureKit takes a
+  /// source rect directly — so a crop is free rather than a capture-then-discard.
+  int cropX = 0;
+  int cropY = 0;
+  int cropW = 0;
+  int cropH = 0;
+
   /// Which ffmpeg to use, for the nodes that need an external codec. Empty
   /// searches $FERRET_FFMPEG, then $PATH, then the usual install locations.
   /// A value containing a separator is an explicit path and is never fallen

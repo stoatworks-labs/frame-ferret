@@ -39,6 +39,22 @@ bool parseNode(const json::Value& v, size_t index, NodeConfig* out,
   out->interfaceSelector = v["interface"].asString();
   out->target = v["target"].asString();
   out->ffmpegPath = v["ffmpeg"].asString();
+
+  if (v.has("crop")) {
+    const json::Value& c = v["crop"];
+    if (!c.isObject()) {
+      error = where + " (\"" + out->id + "\") has a \"crop\" that is not an object";
+      return false;
+    }
+    out->cropX = c["x"].asInt(0);
+    out->cropY = c["y"].asInt(0);
+    out->cropW = c["w"].asInt(0);
+    out->cropH = c["h"].asInt(0);
+    if (out->cropX < 0 || out->cropY < 0 || out->cropW < 0 || out->cropH < 0) {
+      error = where + " (\"" + out->id + "\") has a negative crop";
+      return false;
+    }
+  }
   out->enabled = v.has("enabled") ? v["enabled"].asBool(true) : true;
 
   if (v.has("width")) out->width = v["width"].asInt(out->width);

@@ -1,5 +1,6 @@
 #include "app/factory.h"
 
+#include "sources/screen_capture.h"
 #include "sources/test_pattern.h"
 #include "transports/ndi.h"
 #include "sinks/decklink.h"
@@ -20,6 +21,9 @@ bool isImplemented(NodeKind kind) {
     case NodeKind::sharedSurfaceOut:
     case NodeKind::srt:
     case NodeKind::st2110:
+    case NodeKind::displayCapture:
+    case NodeKind::windowCapture:
+    case NodeKind::applicationCapture:
       return true;
     default:
       return false;
@@ -95,6 +99,24 @@ bool buildNodes(const AppConfig& config, Engine& engine,
         auto sink = std::make_unique<PreviewSink>(node);
         previews.push_back(sink.get());
         engine.addSink(std::move(sink));
+        ++built;
+        break;
+      }
+
+      case NodeKind::displayCapture:
+      case NodeKind::windowCapture:
+      case NodeKind::applicationCapture: {
+        auto source = node.kind == NodeKind::displayCapture
+                          ? makeDisplaySource(node, reason)
+                      : node.kind == NodeKind::windowCapture
+                          ? makeWindowSource(node, reason)
+                          : makeApplicationSource(node, reason);
+        if (!source) {
+          failures.push_back({node.id, reason});
+          continue;
+        }
+        // ScreenCaptureKit delivers BGRA, full range.
+        engine.addSource(std::move(source), PixelFormat::bgra8);
         ++built;
         break;
       }

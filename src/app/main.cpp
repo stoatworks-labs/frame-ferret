@@ -19,6 +19,7 @@
 #include "net/interfaces.h"
 #include "transports/ndi.h"
 #include "sinks/decklink.h"
+#include "sources/screen_capture.h"
 #include "transports/omt.h"
 
 namespace {
@@ -348,6 +349,35 @@ int cmdSources(const std::string& protocol) {
   return failures > 0 && protocol.empty() ? 0 : (failures ? 1 : 0);
 }
 
+int cmdScreens() {
+  if (!ferret::ScreenCapture::supported()) {
+    std::printf("%s\n", ferret::ScreenCapture::unsupportedReason().c_str());
+    return 1;
+  }
+  if (!ferret::ScreenCapture::permitted()) {
+    std::printf("%s\n", ferret::ScreenCapture::permissionReason().c_str());
+    return 1;
+  }
+
+  const auto displays = ferret::ScreenCapture::listDisplays();
+  std::printf("displays:\n");
+  for (size_t i = 0; i < displays.size(); ++i) {
+    std::printf("  %zu: %s  %dx%d\n", i, displays[i].name.c_str(),
+                displays[i].width, displays[i].height);
+  }
+
+  const auto windows = ferret::ScreenCapture::listWindows();
+  std::printf("\nwindows (%zu):\n", windows.size());
+  for (size_t i = 0; i < windows.size() && i < 30; ++i) {
+    std::printf("  %-28s  %s  %dx%d\n", windows[i].application.c_str(),
+                windows[i].title.c_str(), windows[i].width, windows[i].height);
+  }
+  if (windows.size() > 30) {
+    std::printf("  ... and %zu more\n", windows.size() - 30);
+  }
+  return 0;
+}
+
 int usage() {
   std::printf(
       "Frame Ferret %s — a virtual capture card.\n"
@@ -359,6 +389,7 @@ int usage() {
       "  sources [--protocol X]  List NDI and OMT sources visible now\n"
       "  interfaces              List NICs available for binding, with speed\n"
       "  kinds                   List node kinds and the directions each takes\n"
+      "  screens                 List displays and windows available to capture\n"
       "  version                 Print the version\n"
       "\n"
       "`run` with no config serves the built-in colour-bars configuration on\n"
@@ -374,11 +405,15 @@ int usage() {
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Before anything touches CoreGraphics — window capture asserts otherwise.
+  ferret::initialiseWindowServer();
+
   if (argc < 2) return usage();
 
   const std::string cmd = argv[1];
   if (cmd == "interfaces") return cmdInterfaces();
   if (cmd == "kinds") return cmdKinds();
+  if (cmd == "screens") return cmdScreens();
   if (cmd == "selftest") return cmdSelftest();
   if (cmd == "sources") {
     std::string protocol;

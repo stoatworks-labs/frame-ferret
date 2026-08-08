@@ -24,4 +24,17 @@ namespace ferret {
 /// Off macOS this is exactly a sleep.
 void waitServicingMainLoop(double seconds);
 
+/// Establishes this process's connection to the macOS window server. Call once,
+/// from the main thread, before anything touches CoreGraphics.
+///
+/// A plain C++ CLI has no Cocoa initialisation, and some CoreGraphics entry
+/// points assert rather than fail: window capture died with
+/// "Assertion failed: (did_initialize), function CGS_REQUIRE_INIT" the first
+/// time it was run, while *display* capture worked, because only the window
+/// path reaches that code. `NSApplicationLoad()` is the documented way for a
+/// non-Cocoa program to make Cocoa and CoreGraphics usable.
+///
+/// A no-op off macOS.
+void initialiseWindowServer();
+
 }  // namespace ferret

@@ -1,0 +1,9 @@
+{
+  "rate": "30",
+  "control": { "bind": "127.0.0.1", "port": 8740 },
+  "nodes": [
+    { "id": "desk", "kind": "display", "label": "Main display", "target": "0", "width": 1280, "height": 720, "rate": "30" },
+    { "id": "monitor", "kind": "preview", "width": 1280, "height": 720 }
+  ],
+  "routes": { "monitor": "desk" }
+}
