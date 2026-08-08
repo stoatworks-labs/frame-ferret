@@ -74,7 +74,8 @@ Honest, and it will stay honest as this grows.
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
-| DeckLink capture, Syphon/Spout, HTML output | **Not started** |
+| **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
+| DeckLink capture, Spout, HTML output | **Not started** |
 | Tray launcher | **Not started** |
 | Windows, Linux | **Built and self-tested by CI**, all three platforms green. Never run interactively, and no hardware path exists on any of them |
 
@@ -114,6 +115,14 @@ has to encode and mux. That codec layer is real work and it is not written. The
 socket layer underneath it is finished and tested, and SRT is the **first
 transport here that can genuinely bind to a chosen interface** — `srt_bind()`
 takes a real address, where NDI and OMT have no such parameter at all.
+
+**Syphon, verified by a consumer that is not this code.** WebLinked's
+`syphon_probe` links **Resolume Arena's bundled Syphon 5**, not the Syphon 6
+server sources vendored here, and is started *after* Frame Ferret — which is
+the exact case the main-thread trap breaks. It finds
+`Frame Ferret (frame-ferret)`, receives a 1280x720 frame, and reads BGRA
+`191 0 191` at x=640, which is magenta: the right colour, in the right channel
+order, at the right place in the bars.
 
 Two constraints found while scoping, both written up in full because they
 shape everything downstream:

@@ -30,6 +30,8 @@ add_library(ferret_core STATIC
   src/sources/test_pattern.cpp
   src/sinks/preview.cpp
   src/sinks/decklink.cpp
+  src/sinks/syphon_stub.cpp
+  src/app/main_loop.cpp
   src/app/config.cpp
   src/app/engine.cpp
   src/app/factory.cpp
@@ -44,6 +46,40 @@ target_include_directories(ferret_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(WIN32)
   target_link_libraries(ferret_core PUBLIC iphlpapi ws2_32)
+endif()
+
+# ---------------------------------------------------------------------------
+# Syphon (macOS only), plus the vendored Syphon server subset.
+#
+# BSD-3, same revision oxbow uses; third_party/syphon/README.md records what was
+# taken and what was left. Those sources are ARC and expect Syphon's own prefix
+# header, neither of which is true of anything else here, so both are set
+# per-file rather than on the target.
+# ---------------------------------------------------------------------------
+if(APPLE)
+  target_sources(ferret_core PRIVATE src/sinks/syphon.mm)
+  set(FERRET_SYPHON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/syphon/Syphon)
+  file(GLOB FERRET_SYPHON_OBJC ${FERRET_SYPHON_DIR}/*.m)
+  file(GLOB FERRET_SYPHON_C    ${FERRET_SYPHON_DIR}/*.c)
+  target_sources(ferret_core PRIVATE ${FERRET_SYPHON_OBJC} ${FERRET_SYPHON_C})
+
+  # -w because this is upstream code we do not modify, and it uses
+  # kIOSurfaceIsGlobal — which is how Syphon shares a surface between processes
+  # at all, and is deprecated with no replacement. Left as a warning it would be
+  # noise in every build forever.
+  #
+  # ARC is Syphon's own setting and applies only to the Objective-C files;
+  # SyphonDispatch.c is plain C, where the flag is rejected rather than merely
+  # unnecessary.
+  set_source_files_properties(${FERRET_SYPHON_OBJC} PROPERTIES
+    COMPILE_OPTIONS "-fobjc-arc;-include;${FERRET_SYPHON_DIR}/Syphon_Prefix.pch;-w")
+  set_source_files_properties(${FERRET_SYPHON_C} PROPERTIES COMPILE_OPTIONS "-w")
+
+  target_include_directories(ferret_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/syphon)
+  target_link_libraries(ferret_core PUBLIC
+    "-framework Foundation" "-framework IOSurface" "-framework CoreFoundation"
+    "-framework AppKit")
 endif()
 
 # ---------------------------------------------------------------------------

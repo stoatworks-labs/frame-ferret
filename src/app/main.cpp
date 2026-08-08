@@ -11,6 +11,7 @@
 #include "app/config.h"
 #include "app/engine.h"
 #include "app/factory.h"
+#include "app/main_loop.h"
 #include "app/node.h"
 #include "app/router.h"
 #include "control/control_api.h"
@@ -189,8 +190,12 @@ int cmdRun(const std::string& configPath) {
   std::printf("Running at %s fps. Ctrl-C to stop.\n",
               config.rate.label().c_str());
 
+  // waitServicingMainLoop, never sleep_for. On macOS the Syphon sink creates
+  // its server with a dispatch_sync onto the main queue, and that only
+  // completes if the main thread is inside a run loop — a plain sleep here
+  // deadlocks the frame thread on its first Syphon frame. See app/main_loop.h.
   while (!g_stop.load()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    ferret::waitServicingMainLoop(0.1);
   }
 
   std::printf("\nStopping.\n");

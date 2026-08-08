@@ -68,8 +68,13 @@ enumerates (drivers found, zero devices). Optional at build time via
 `-DDECKLINK_SDK_DIR`; the version guard rejects anything below 11.0 and is
 proven to reject the 10.11 copy inside the NDI SDK's examples.
 
+- **Syphon output (macOS), verified against Resolume's Syphon 5** — a
+  different implementation from the vendored Syphon 6 sources — from a process
+  started *after* Frame Ferret, which is the exact case the main-thread trap
+  breaks. Frame received, colours and channel order correct.
+
 **Not written at all.** ST 2110, every capture source, DeckLink *capture*,
-Syphon/Spout, the HTML output, the OS extensions, and the tray launcher. Do not
+Spout, the HTML output, the OS extensions, and the tray launcher. Do not
 describe any of it as working.
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
@@ -118,9 +123,12 @@ Carried forward from the fleet, because these will be hit again here.
   receivers connect to a source that never sends.
 - **NDI's `BGRX_BGRA_flipped` receive format is Windows-only.** Elsewhere
   normalise rows at ingest.
-- **A Syphon server must be created on the main thread.** On a private run loop
-  it is perfectly well-formed, announces itself, and is invisible to every
-  consumer. oxbow's `src/app/main_loop.h` is the pattern.
+- **A Syphon server must be created on the main thread**, and **every
+  main-thread wait must go through `waitServicingMainLoop`** (app/main_loop.h).
+  On a private run loop the server is well-formed, announces itself, and is
+  invisible to every consumer — and a plain `sleep_for` on the main thread
+  deadlocks the frame thread's `dispatch_sync` on its first Syphon frame.
+  `cmdRun` waits correctly; do not "simplify" it back to sleep_for.
 - **Two DeckLink SDKs exist on this Mac** — 10.11 inside the NDI SDK's
   examples, 12.2 inside Unreal's BlackmagicMedia — and first-hit order picks
   the wrong one. Below 11.0 there is no `IDeckLinkProfileAttributes`.
