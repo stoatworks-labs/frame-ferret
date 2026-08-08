@@ -67,13 +67,20 @@ Note SRT **can** bind to a chosen interface — `srt_bind()` takes a real addres
 and there is SRTO_BINDTODEVICE — which makes it the first transport here where
 the `interface` setting does something. NDI and OMT can only warn.
 
-**DeckLink output is written but has NEVER been run against a card.** The
-scheduled-playback sequence is lifted faithfully from oxbow's
-`src/io/decklink.cpp`, which *has* been run on a real Duo 2 — but no DeckLink
-was attached to this machine while this port was written, so treat it as
-unverified. What is confirmed: it compiles against SDK 12.2, the build without
-the SDK reports itself unavailable, and with the SDK the dispatch layer
-enumerates (drivers found, zero devices). Optional at build time via
+**DeckLink output has been run on a real Duo 2**: 1920x1080p50 as v210 on
+connector 1, with the card's own completion callback reporting **2531 frames,
+0 late, 0 dropped** over ~50 seconds. **The pixels on the wire are still
+unverified** — that needs an SDI cable looping an output back to an input, and
+there was none. Do not upgrade "the card accepted and displayed every frame" to
+"the picture is correct".
+
+Two things about the sink worth keeping:
+- **It advertises v210 and UYVY only, never BGRA.** The router treats any
+  accepted format as a copy, so advertising BGRA means a BGRA source *gets*
+  BGRA — and a Duo 2 will not carry 1080p50 as 8-bit BGRA at all, so the whole
+  output fails having never tried the format it can do.
+- The card enumerates only in the **2-sub-device half-duplex (2dhd)** profile;
+  `oxbow/build/dl_profile` shows and sets it. Optional at build time via
 `-DDECKLINK_SDK_DIR`; the version guard rejects anything below 11.0 and is
 proven to reject the 10.11 copy inside the NDI SDK's examples.
 

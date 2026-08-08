@@ -53,9 +53,21 @@ struct FixedCoeffs {
   int32_t cOffset;
 
   // Forward direction (RGB -> YCbCr), 8-bit in, 10-bit out.
-  int32_t kr, kg, kb;    // luma weights
-  int32_t cbScale, crScale;
-  int32_t yScaleFwd, yOffsetFwd;
+  //
+  // Fully folded: each output component is one dot product of the 8-bit RGB
+  // triple, with the luma weights, the range scaling and the chroma
+  // normalisation all multiplied together in advance. The first integer version
+  // did it in two stages — weights, then scale — with an int64 intermediate per
+  // pixel, and that cost 26.6 ms for a 1920x1080 BGRA->v210 frame: a 38 fps
+  // ceiling, which showed up as a DeckLink output running at 34 fps with a
+  // third of its ticks late.
+  //
+  // Range: an 8-bit channel times a folded coefficient is at most ~1.3e7, and
+  // three of those sum well inside int32. No 64-bit arithmetic is needed.
+  int32_t yR, yG, yB, yOffsetFwd;
+  int32_t cbR, cbG, cbB;
+  int32_t crR, crG, crB;
+  int32_t cOffsetFwd;
 };
 
 constexpr int kShift = 16;
@@ -76,15 +88,30 @@ FixedCoeffs makeCoeffs(const LumaCoefficients& k, const Scaling& s) {
   c.crToG = static_cast<int32_t>(
       (toByte * 2.0 * (1.0 - k.kr) * k.kr / (k.kg() * s.cScale)) * kOne);
 
-  c.kr = static_cast<int32_t>(k.kr * kOne);
-  c.kg = static_cast<int32_t>(k.kg() * kOne);
-  c.kb = static_cast<int32_t>(k.kb * kOne);
-  c.yScaleFwd = static_cast<int32_t>((s.yScale / toByte) * kOne);
+  // Luma: weights times the range scale, in one coefficient each.
+  // std::lround, not a cast. A cast truncates toward zero, so every negative
+  // chroma coefficient came out one step short and the round trip drifted past
+  // the 2-code-value budget the colour-bar test holds.
+  auto fixed = [](double v) { return static_cast<int32_t>(std::lround(v * kOne)); };
+
+  const double yGainFwd = s.yScale / toByte;
+  c.yR = fixed(k.kr * yGainFwd);
+  c.yG = fixed(k.kg() * yGainFwd);
+  c.yB = fixed(k.kb * yGainFwd);
   c.yOffsetFwd = static_cast<int32_t>(s.yOffset);
-  c.cbScale = static_cast<int32_t>(
-      (s.cScale / (2.0 * (1.0 - k.kb) * toByte)) * kOne);
-  c.crScale = static_cast<int32_t>(
-      (s.cScale / (2.0 * (1.0 - k.kr) * toByte)) * kOne);
+
+  // Chroma: (B - Y) and (R - Y) expanded back into R, G and B terms, so each
+  // is also a single dot product rather than a subtraction of a separate luma.
+  const double cbGain = s.cScale / (2.0 * (1.0 - k.kb) * toByte);
+  c.cbR = fixed(-k.kr * cbGain);
+  c.cbG = fixed(-k.kg() * cbGain);
+  c.cbB = fixed((1.0 - k.kb) * cbGain);
+
+  const double crGain = s.cScale / (2.0 * (1.0 - k.kr) * toByte);
+  c.crR = fixed((1.0 - k.kr) * crGain);
+  c.crG = fixed(-k.kg() * crGain);
+  c.crB = fixed(-k.kb * crGain);
+  c.cOffsetFwd = static_cast<int32_t>(s.cOffset);
   return c;
 }
 
@@ -211,45 +238,118 @@ void readV210(const uint8_t* src, int width, Row422& out) {
   }
 }
 
+/// BGRA/RGBA straight to v210, with no Row422 in between.
+///
+/// A deliberate exception to this file's one-intermediate rule, and the comment
+/// on Row422 explains why that rule exists — so here is why it is broken here.
+/// This is the hot path: a screen capture or a generated pattern going to SDI.
+/// Via the intermediate it cost 23.4 ms for a 1920x1080 frame, a 43 fps ceiling
+/// on a 50 fps output, and the card ran at 39 fps with half its ticks late.
+/// Most of that was not arithmetic but traffic: three uint16 arrays written and
+/// read back per row, about 8 MB each way per frame.
+///
+/// Only this one pair is fused. Everything else still goes through Row422,
+/// because everything else is either rare or already fast enough.
+void fusedRgbToV210(const uint8_t* src, int width, bool bgra,
+                    const FixedCoeffs& c, uint8_t* dst) {
+  constexpr int32_t kHalf = 1 << (kShift - 1);
+  constexpr int32_t kHalfPair = 1 << kShift;
+  const int groups = (width + 5) / 6;
+
+  for (int g = 0; g < groups; ++g) {
+    const int base = g * 6;
+    uint16_t y[6];
+    uint16_t cb[3];
+    uint16_t cr[3];
+
+    for (int pair = 0; pair < 3; ++pair) {
+      const int x0 = base + pair * 2;
+      // Clamp to the last real pixel so a width that is not a multiple of six
+      // repeats its edge rather than reading past the row.
+      const int i0 = x0 < width ? x0 : width - 1;
+      const int i1 = (x0 + 1) < width ? (x0 + 1) : width - 1;
+
+      const uint8_t* p0 = src + static_cast<size_t>(i0) * 4;
+      const uint8_t* p1 = src + static_cast<size_t>(i1) * 4;
+      const int32_t r0 = bgra ? p0[2] : p0[0], g0 = p0[1],
+                    b0 = bgra ? p0[0] : p0[2];
+      const int32_t r1 = bgra ? p1[2] : p1[0], g1 = p1[1],
+                    b1 = bgra ? p1[0] : p1[2];
+
+      y[pair * 2] = static_cast<uint16_t>(
+          c.yOffsetFwd + ((c.yR * r0 + c.yG * g0 + c.yB * b0 + kHalf) >> kShift));
+      y[pair * 2 + 1] = static_cast<uint16_t>(
+          c.yOffsetFwd + ((c.yR * r1 + c.yG * g1 + c.yB * b1 + kHalf) >> kShift));
+
+      const int32_t rs = r0 + r1, gs = g0 + g1, bs = b0 + b1;
+      int32_t u = c.cOffsetFwd +
+                  ((c.cbR * rs + c.cbG * gs + c.cbB * bs + kHalfPair) >>
+                   (kShift + 1));
+      int32_t v = c.cOffsetFwd +
+                  ((c.crR * rs + c.crG * gs + c.crB * bs + kHalfPair) >>
+                   (kShift + 1));
+      cb[pair] = static_cast<uint16_t>(u < 0 ? 0 : (u > 1023 ? 1023 : u));
+      cr[pair] = static_cast<uint16_t>(v < 0 ? 0 : (v > 1023 ? 1023 : v));
+    }
+
+    uint32_t w[4];
+    w[0] = pack3(cb[0], y[0], cr[0]);
+    w[1] = pack3(y[1], cb[1], y[2]);
+    w[2] = pack3(cr[1], y[3], cb[2]);
+    w[3] = pack3(y[4], cr[2], y[5]);
+    std::memcpy(dst + static_cast<size_t>(g) * 16, w, 16);
+  }
+}
+
 void readBgraLike(const uint8_t* src, int width, bool bgra,
                   const FixedCoeffs& c, Row422& out) {
-  // Integer RGB -> YCbCr. Chroma is averaged across each pair before
-  // subsampling; dropping the odd pixel's chroma instead is cheaper and
-  // visibly worse on saturated vertical edges, which is what test patterns are
-  // made of.
+  // Chroma is averaged across each pair. The colour transform is linear, so
+  // averaging RGB and converting once is identical to converting twice and
+  // averaging — and it halves the chroma work. Dropping the odd pixel's chroma
+  // instead would be cheaper still and visibly worse on saturated vertical
+  // edges, which is exactly what test patterns are made of.
+  constexpr int32_t kHalf = 1 << (kShift - 1);
+
   for (int x = 0; x < width; x += 2) {
-    int64_t cbSum = 0, crSum = 0;
-    int n = 0;
-    for (int i = 0; i < 2 && x + i < width; ++i) {
-      const uint8_t* p = src + static_cast<size_t>(x + i) * 4;
-      const int32_t r = bgra ? p[2] : p[0];
-      const int32_t g = p[1];
-      const int32_t b = bgra ? p[0] : p[2];
+    const uint8_t* p0 = src + static_cast<size_t>(x) * 4;
+    const int32_t r0 = bgra ? p0[2] : p0[0];
+    const int32_t g0 = p0[1];
+    const int32_t b0 = bgra ? p0[0] : p0[2];
 
-      // Luma kept in 16.16 throughout. Truncating it to a whole 8-bit value
-      // first — as the first integer draft did — loses precision twice, once
-      // here and again when scaling to 10-bit, and the grey round-trip test
-      // caught it immediately at 2 code values of drift.
-      const int32_t yFix = c.kr * r + c.kg * g + c.kb * b;  // 16.16, 0..255
+    out.y[x] = static_cast<uint16_t>(
+        c.yOffsetFwd + ((c.yR * r0 + c.yG * g0 + c.yB * b0 + kHalf) >> kShift));
 
-      // 16.16 * 16.16 -> 32.32, rounded. int64 because the product overflows
-      // int32 for any realistic luma.
-      out.y[x + i] = static_cast<uint16_t>(
+    int32_t rSum = r0, gSum = g0, bSum = b0;
+    if (x + 1 < width) {
+      const uint8_t* p1 = src + static_cast<size_t>(x + 1) * 4;
+      const int32_t r1 = bgra ? p1[2] : p1[0];
+      const int32_t g1 = p1[1];
+      const int32_t b1 = bgra ? p1[0] : p1[2];
+      out.y[x + 1] = static_cast<uint16_t>(
           c.yOffsetFwd +
-          static_cast<int32_t>((static_cast<int64_t>(yFix) * c.yScaleFwd +
-                                (int64_t{1} << 31)) >> 32));
-
-      cbSum += (b << kShift) - yFix;
-      crSum += (r << kShift) - yFix;
-      ++n;
+          ((c.yR * r1 + c.yG * g1 + c.yB * b1 + kHalf) >> kShift));
+      rSum += r1;
+      gSum += g1;
+      bSum += b1;
+    } else {
+      // Odd width: the last pixel stands in for the pair.
+      rSum += r0;
+      gSum += g0;
+      bSum += b0;
     }
+
+    // Sums are of two pixels, so shift one extra bit to divide by two.
+    // Rounding constant matches the shift actually used — half of 2^(kShift+1),
+    // not of 2^kShift.
+    constexpr int32_t kHalfPair = 1 << kShift;
+    const int32_t cb =
+        c.cOffsetFwd + ((c.cbR * rSum + c.cbG * gSum + c.cbB * bSum +
+                         kHalfPair) >> (kShift + 1));
+    const int32_t cr =
+        c.cOffsetFwd + ((c.crR * rSum + c.crG * gSum + c.crB * bSum +
+                         kHalfPair) >> (kShift + 1));
+
     const int cIdx = x / 2;
-    const int32_t cbAvg = cbSum / n;
-    const int32_t crAvg = crSum / n;
-    int32_t cb = c.cOffset + static_cast<int32_t>(
-        (static_cast<int64_t>(cbAvg) * c.cbScale + (int64_t{1} << 31)) >> 32);
-    int32_t cr = c.cOffset + static_cast<int32_t>(
-        (static_cast<int64_t>(crAvg) * c.crScale + (int64_t{1} << 31)) >> 32);
     out.cb[cIdx] = static_cast<uint16_t>(cb < 0 ? 0 : (cb > 1023 ? 1023 : cb));
     out.cr[cIdx] = static_cast<uint16_t>(cr < 0 ? 0 : (cr > 1023 ? 1023 : cr));
   }
@@ -410,6 +510,17 @@ bool convert(const VideoFrame& src, PixelFormat to, PixelFormat& outFormat,
   dstStride = tightStrideBytes(to, src.width);
   dst.resize(static_cast<size_t>(dstStride) * src.height);
   outFormat = to;
+
+  // The fused fast path, before the general machinery.
+  if (to == PixelFormat::v210 && srcIsRgb) {
+    const bool bgra = src.format == PixelFormat::bgra8;
+    for (int y = 0; y < src.height; ++y) {
+      fusedRgbToV210(src.data + static_cast<size_t>(y) * src.strideBytes,
+                     src.width, bgra, coeffs,
+                     dst.data() + static_cast<size_t>(y) * dstStride);
+    }
+    return true;
+  }
 
   Row422 row;
   ensureRow(row, src.width);

@@ -179,11 +179,20 @@ class DeckLinkSink final : public Sink {
 
   const std::string& id() const override { return config_.id; }
 
-  /// v210 first: it is the card's native 10-bit 4:2:2 and the reason pixel
-  /// formats travel with frames at all. UYVY next for an 8-bit 4:2:2 source,
-  /// BGRA last for anything with alpha or from a desktop capture.
+  /// YCbCr only — v210 first, UYVY second. **BGRA is deliberately absent.**
+  ///
+  /// The router treats any format it accepts as a copy, and rightly so: that
+  /// is what stops it converting for no reason. But a card advertising BGRA
+  /// therefore *gets* BGRA whenever the source happens to be RGB, and a Duo 2
+  /// will not carry 1080p50 as 8-bit BGRA at all — the whole output then fails
+  /// with "will not carry that mode", having never tried the format it can do.
+  ///
+  /// So this sink advertises only what the card reliably carries at broadcast
+  /// rasters, and an RGB source becomes an explicit conversion to v210 — which
+  /// is the 10-bit path the pixel-format model exists for. BGRA comes back when
+  /// key+fill is implemented, where alpha actually needs it.
   std::vector<PixelFormat> preferredFormats() const override {
-    return {PixelFormat::v210, PixelFormat::uyvy8, PixelFormat::bgra8};
+    return {PixelFormat::v210, PixelFormat::uyvy8};
   }
 
   void send(const VideoFrame& frame) override {

@@ -1,0 +1,10 @@
+{
+  "rate": "50",
+  "control": { "bind": "127.0.0.1", "port": 8740 },
+  "nodes": [
+    { "id": "bars", "kind": "test", "label": "Colour bars", "width": 1920, "height": 1080, "rate": "50" },
+    { "id": "sdi", "kind": "decklink", "label": "DeckLink out 1", "target": "0", "width": 1920, "height": 1080, "rate": "50" },
+    { "id": "monitor", "kind": "preview", "width": 1920, "height": 1080 }
+  ],
+  "routes": { "sdi": "bars", "monitor": "bars" }
+}

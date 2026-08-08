@@ -71,7 +71,7 @@ Honest, and it will stay honest as this grows.
 | **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly |
 | **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools |
 | **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
-| **DeckLink output** | **Built, optional at build time.** Prefers v210 so 10 bits reach the card. **Never run against a card from this codebase** — no DeckLink was attached while it was written |
+| **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
 | ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
@@ -171,6 +171,17 @@ the exact case the main-thread trap breaks. It finds
 `Frame Ferret (frame-ferret)`, receives a 1280x720 frame, and reads BGRA
 `191 0 191` at x=640, which is magenta: the right colour, in the right channel
 order, at the right place in the bars.
+
+**DeckLink, on real hardware.** A Duo 2 in the 2-sub-device half-duplex profile,
+output on connector 1 at 1920x1080p50 as **v210**. The card's own completion
+callback reports **2531 frames, 0 late, 0 dropped** over ~50 seconds, with the
+engine holding 49.98 fps. What is *not* verified is the picture on the wire:
+that needs an SDI cable looping an output back to an input, and there was none.
+
+Getting there needed the conversion made three times faster. BGRA to v210 at
+1080p cost 26.6 ms — a 38 fps ceiling — so the card ran at 34 fps with a third
+of its ticks late. Folding the colour coefficients and then fusing RGB to v210
+past the shared intermediate took it to **12.7 ms**.
 
 Two constraints found while scoping, both written up in full because they
 shape everything downstream:
