@@ -42,8 +42,26 @@ Still to do here: a ten-minute soak, and audio actually verified.
 
 ## Phase 2 — the rest of the transports
 
-- OMT (watch the .NET signal-handler trap)
-- SRT, lifted from srt-router
+- **OMT ✅ done.** Both directions, verified against oxbow and macOS `dns-sd`.
+- **SRT — transport layer ✅ done, codec layer not started.** `srt_socket.*`
+  does caller/listener, real interface binding, latency, passphrase and stream
+  id, and is proven over loopback. What is missing is that **SRT carries
+  compressed MPEG-TS, not frames**: a source must demux and decode, a sink must
+  encode and mux. Until that exists there is deliberately no SRT node.
+
+  Sequenced the same way as 2110, and for the same reason — receiving is far
+  more forgiving than sending:
+  1. TS demux + H.264 decode, so SRT can be a *source*. "Receive an SRT
+     contribution feed and present it as a UVC camera" is the useful case.
+  2. H.264 encode + TS mux, so SRT can be a *sink*. Needs rate control,
+     keyframe interval and PCR handling to be right.
+
+  ffmpeg (libavcodec/libavformat) is the obvious implementation and is present
+  on this machine, but it must be an **optional build-time dependency**, the way
+  oxbow treats the DeckLink SDK — CI has no ffmpeg, and mirroring AVCodecContext
+  through dlopen would be version-fragile in a way NDI's and OMT's flat C ABIs
+  are not.
+
 - DeckLink out, then DeckLink in
 - Syphon out (macOS) and Spout out (Windows)
 

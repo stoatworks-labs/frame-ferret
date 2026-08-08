@@ -1,13 +1,15 @@
 # Frame Ferret
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
-> (Anthropic), directed and reviewed by a human author. **NDI works in both
-> directions**, verified against oxbow — a separate codebase — which discovers
-> Frame Ferret's stream and decodes its colour bars correctly, and whose own
-> stream Frame Ferret receives at 59.97 fps. 9 test binaries, 456 checks, all
-> passing. Everything else — OMT, SRT, ST 2110, screen capture, the UVC camera,
-> DeckLink, Syphon/Spout — is designed and documented but **not implemented**,
-> and no hardware output exists on any platform. See [Status](#status).
+> (Anthropic), directed and reviewed by a human author. **NDI and OMT both work
+> in both directions**, verified against oxbow and against macOS's own `dns-sd`
+> — separate implementations, not this code. SRT's transport layer is built and
+> proven over a loopback connection, but SRT carries *compressed* MPEG-TS, and
+> the encoder and decoder that would let it carry frames **do not exist yet**,
+> so there is no SRT node. 11 test binaries, 535 checks, all passing. ST 2110,
+> screen capture, the UVC camera, DeckLink and Syphon/Spout are designed and
+> documented but not implemented, and no hardware output exists on any
+> platform. See [Status](#status).
 
 A software virtual capture card. One application that is an **NDI, OMT, SRT and
 ST 2110 endpoint** — transmitting and receiving — over a chosen network
@@ -64,7 +66,10 @@ Honest, and it will stay honest as this grows.
 | Web control page + JSON API | **Built and driven in a browser.** Crosspoint clicks verified against the API |
 | CLI (`run`, `selftest`, `interfaces`, `kinds`) | **Runs** |
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
-| OMT, SRT, ST 2110 | **Not started.** Designed only |
+| **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
+| **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. **No SRT node yet:** it needs an encoder |
+| SRT encode / decode | **Not started.** The remaining piece — see below |
+| ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
@@ -83,6 +88,12 @@ Unrouting the sink from the browser turned the output black *and kept it
 running at 50 fps*, reporting `no source routed` — which is the invariant this
 whole program is built around, observed rather than asserted.
 
+**OMT, both directions.** Sending is confirmed by macOS's own `dns-sd`, which
+browses `_omt._tcp` and lists `MAC (FerretOMT)` on four interfaces, and by oxbow
+receiving at `omt://127.0.0.1:6400` and decoding all eight bars **within 2 code
+values** — much closer than NDI's 13, because OMT carried BGRA rather than
+compressing it. Receiving is a Frame Ferret round trip at a clean 50 fps.
+
 **NDI, both directions, against an independent implementation.** Sending:
 [oxbow](https://github.com/stoatworks-labs/oxbow) discovers `MAC (FerretTest)`,
 receives 1280x720p50, and all eight colour bars decode in the right order with
@@ -94,6 +105,14 @@ One honest note on that measurement: saturated blue comes back 178 rather than
 191. That is NDI's SpeedHQ compression, not this code — oxbow's own sender
 through the same round trip lands on exactly the same 178. The control
 experiment mattered; the number alone would have looked like a bug.
+
+**Why there is no SRT node yet.** NDI and OMT carry raw frames, so a node is a
+thin wrapper over the SDK. SRT does not: it carries an MPEG transport stream of
+*compressed* video, so an SRT source has to demux and decode, and an SRT sink
+has to encode and mux. That codec layer is real work and it is not written. The
+socket layer underneath it is finished and tested, and SRT is the **first
+transport here that can genuinely bind to a chosen interface** — `srt_bind()`
+takes a real address, where NDI and OMT have no such parameter at all.
 
 Two constraints found while scoping, both written up in full because they
 shape everything downstream:

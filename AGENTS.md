@@ -13,7 +13,7 @@ it is the whole mental model.
 This section is the most important one in the file. Keep it honest, and never
 upgrade "compiles" to "works".
 
-**Built, tested and run on this machine** — 456 checks across 9 binaries:
+**Built, tested and run on this machine** — 535 checks across 11 binaries:
 
 - The crosspoint `Router` and its plan-every-sink invariant — 36 checks.
 - Exact rational rates, tick deadlines and the drift property — 40 checks,
@@ -40,9 +40,26 @@ upgrade "compiles" to "works".
   Frame Ferret receives oxbow's stream at 59.97 fps as a UYVY copy. Runtime
   loaded, never linked. 40 checks on the ABI and the no-runtime path.
 
-**Not written at all.** OMT, SRT, ST 2110, every capture source, every hardware
-output, the OS extensions, and the tray launcher. Do not describe any of it as
-working.
+- **OMT, both directions, verified against two things that are not this code.**
+  macOS's own `dns-sd` browses `_omt._tcp` and lists `MAC (FerretOMT)`; oxbow
+  receives at `omt://127.0.0.1:6400` and decodes all eight bars within 2 code
+  values. Receiving is a round trip at 50 fps.
+- **SRT's transport layer**, proven by a real loopback listener/caller pair
+  carrying bytes. **There is no SRT node** — see below.
+
+**SRT is deliberately half-done, and the half that is missing is the codec.**
+NDI and OMT carry raw frames; SRT carries an MPEG transport stream of
+*compressed* video. So an SRT source must demux and decode and an SRT sink must
+encode and mux, and none of that is written. `NodeKind::srt` is therefore NOT in
+`isImplemented()`, on purpose: a node that cannot carry video is worse than an
+absent one. `src/transports/srt_socket.*` is finished and tested underneath it.
+
+Note SRT **can** bind to a chosen interface — `srt_bind()` takes a real address
+and there is SRTO_BINDTODEVICE — which makes it the first transport here where
+the `interface` setting does something. NDI and OMT can only warn.
+
+**Not written at all.** ST 2110, every capture source, every hardware output,
+the OS extensions, and the tray launcher. Do not describe any of it as working.
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
@@ -106,6 +123,21 @@ Carried forward from the fleet, because these will be hit again here.
   writing "FLTP". Assume the obvious spelling and the SDK treats every audio
   frame as an unknown format: video works perfectly and audio silently never
   arrives. Pinned in `tests/test_ndi_abi.cpp`.
+- **Mirror every SDK constant from a probe, never from memory or from reading.**
+  `tools/{ndi,omt,srt}_abi.c` compile against the real headers and print sizes,
+  offsets and enum values. All three have already caught something: NDI's audio
+  struct is 64 bytes not 56, NDI's audio FourCC is `FLTp` not `FLTP`, and
+  libsrt's SRTO_SNDTIMEO/SRTO_RCVTIMEO are 13/14 not the 38/37 written from
+  memory — while SRTO_STREAMID has no explicit value in the header at all, so
+  no amount of reading finds it. A wrong option number does not fail; it sets a
+  different option.
+- **Conversion is on the critical path and must stay integer.** It was `double`
+  with `std::lround` per component and cost 29.7 ms for a 1280x720 UYVY->BGRA
+  frame — a 33.6 fps ceiling that showed up as an OMT receiver at 19 fps. Now
+  fixed-point, 9.3 ms. Do not "simplify" it back to floating point.
+- **Do not allocate per frame.** `PreviewSink` allocated 3.7 MB twice per frame
+  and that cost more than the conversion did. Both the engine and the preview
+  hold reusable scratch buffers; keep it that way.
 - **NDI has no interface binding of any kind.** Not on send, receive or
   discovery — `grep -i interface` across the whole SDK header set returns
   nothing. `"interface"` on an NDI node therefore produces a *warning*, not a
