@@ -10,6 +10,10 @@
 namespace ferret {
 namespace {
 
+/// Pi, spelled out. `M_PI` is not standard C++ and MSVC does not define it
+/// without _USE_MATH_DEFINES — which is a macro dance to get one number.
+constexpr double kPi = 3.14159265358979323846;
+
 // 75% bars: 191 rather than 255 on each active component. 100% bars overload
 // several legal-range encodings and are the wrong default for a broadcast
 // test source.
@@ -112,7 +116,7 @@ class TestPatternSource : public Source {
     audio->samplesPerChannel = samples;
     audio->data.resize(static_cast<size_t>(kToneChannels) * samples);
 
-    const double step = 2.0 * M_PI * kToneHz / kToneSampleRate;
+    const double step = 2.0 * kPi * kToneHz / kToneSampleRate;
     for (int i = 0; i < samples; ++i) {
       const float value =
           static_cast<float>(std::sin(phase_) * kToneAmplitude);
@@ -120,7 +124,7 @@ class TestPatternSource : public Source {
         audio->data[static_cast<size_t>(c) * samples + i] = value;
       }
       phase_ += step;
-      if (phase_ > 2.0 * M_PI) phase_ -= 2.0 * M_PI;
+      if (phase_ > 2.0 * kPi) phase_ -= 2.0 * kPi;
     }
     pendingAudio_ = std::move(audio);
   }
