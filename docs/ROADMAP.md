@@ -1,0 +1,75 @@
+# Roadmap
+
+Ordered by what unblocks the most, not by what is most interesting. Nothing
+past phase 0 exists.
+
+## Phase 0 — the spine ✅ done
+
+Node model, crosspoint router, exact rational timing, pixel format model,
+interface enumeration, CLI. 190 checks passing. No video path.
+
+## Phase 1 — one stream, end to end
+
+The goal is a single proven route through the whole program, not breadth.
+
+- `sources/` and `sinks/` factory plumbing from `NodeConfig`
+- **NDI in, NDI out**, runtime-loaded, bound to a chosen interface
+- The frame loop: tick from the rational, poll sources, execute the plan
+- Format conversion for the pairs the router marks `convert`
+- `run --config <file>` and a `selftest` that fails on all-black output
+
+Done when NDI → NDI holds frame rate for ten minutes against an independent
+receiver, with the interface binding confirmed by `lsof`.
+
+## Phase 2 — the rest of the transports
+
+- OMT (watch the .NET signal-handler trap)
+- SRT, lifted from srt-router
+- DeckLink out, then DeckLink in
+- Syphon out (macOS) and Spout out (Windows)
+
+## Phase 3 — capture sources
+
+- Display and region-of-interest capture via ScreenCaptureKit
+- Window and application capture — **do these before the virtual display**, as
+  they may absorb most of what it is wanted for
+- Syphon / Spout client input
+
+## Phase 4 — control
+
+- HTTP control server and the embedded crosspoint page, WebLinked's model
+- OSC, with the padding bug from WebLinked already covered by a test
+- The av-launcher tray shell and `launcher.toml`
+
+## Phase 5 — ST 2110
+
+Sequenced by what the platform can actually support — see
+[02-st2110.md](02-st2110.md).
+
+1. 2110-30 audio and 2110-40 ancillary, macOS. Low bitrate, tolerant of a
+   software-timestamped clock, and useful on their own.
+2. 2110-20 **receive**. Far more forgiving than sending: no pacing obligation
+   and the media clock arrives on the wire. A Mac that receives 2110-20 and
+   presents it as a UVC camera is probably the most useful single thing in this
+   application.
+3. 2110-20 **send**, wide profile, labelled as such in the UI and the SDP.
+4. SDP generation and parsing; NMOS IS-04 / IS-05 if a real plant needs it.
+
+## Phase 6 — the OS extensions
+
+Full detail in [03-os-extensions.md](03-os-extensions.md). **Start the Apple
+entitlement request at the beginning of phase 1**, not here — it is calendar
+time, not work.
+
+1. Windows virtual camera (MFVirtualCamera) — cheapest of the four
+2. macOS virtual camera (CMIOExtension), once the entitlement lands
+3. Windows virtual display (IddCx), if attestation signing is worth opening
+4. macOS virtual display — private API, off by default, experimental, and only
+   if phase 3 leaves a real gap
+
+## Unresolved, and needing a decision before the installer is designed
+
+The macOS system extension must be activated from an app in `/Applications`.
+The fleet's usual trick — unpacking into Application Support on first run, which
+is how WebLinked dodges the Gatekeeper nested-helper kill — is incompatible with
+that. These two pull in opposite directions and one of them has to give.
