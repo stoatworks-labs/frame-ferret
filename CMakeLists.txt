@@ -22,6 +22,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(ferret_core STATIC
   src/core/dylib.cpp
+  src/core/subprocess.cpp
   src/core/frame.cpp
   src/core/json.cpp
   src/core/pixel_format.cpp
@@ -41,6 +42,8 @@ add_library(ferret_core STATIC
   src/transports/ndi.cpp
   src/transports/omt.cpp
   src/transports/srt_socket.cpp
+  src/transports/ffmpeg.cpp
+  src/transports/srt.cpp
 )
 target_include_directories(ferret_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 

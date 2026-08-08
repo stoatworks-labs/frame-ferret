@@ -38,6 +38,7 @@ bool parseNode(const json::Value& v, size_t index, NodeConfig* out,
   out->label = v.has("label") ? v["label"].asString() : out->id;
   out->interfaceSelector = v["interface"].asString();
   out->target = v["target"].asString();
+  out->ffmpegPath = v["ffmpeg"].asString();
   out->enabled = v.has("enabled") ? v["enabled"].asBool(true) : true;
 
   if (v.has("width")) out->width = v["width"].asInt(out->width);

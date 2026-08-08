@@ -68,7 +68,9 @@ Honest, and it will stay honest as this grows.
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. **No SRT node yet:** it needs an encoder |
-| SRT encode / decode | **Not started.** The remaining piece — see below |
+| SRT receive (decode) | **Written, connects, spawns ffmpeg — end-to-end decode UNVERIFIED.** See below |
+| SRT send (encode) | **Not started** |
+| **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
 | **DeckLink output** | **Built, optional at build time.** Prefers v210 so 10 bits reach the card. **Never run against a card from this codebase** — no DeckLink was attached while it was written |
 | ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
@@ -108,13 +110,38 @@ One honest note on that measurement: saturated blue comes back 178 rather than
 through the same round trip lands on exactly the same 178. The control
 experiment mattered; the number alone would have looked like a bug.
 
-**Why there is no SRT node yet.** NDI and OMT carry raw frames, so a node is a
-thin wrapper over the SDK. SRT does not: it carries an MPEG transport stream of
-*compressed* video, so an SRT source has to demux and decode, and an SRT sink
-has to encode and mux. That codec layer is real work and it is not written. The
-socket layer underneath it is finished and tested, and SRT is the **first
-transport here that can genuinely bind to a chosen interface** — `srt_bind()`
-takes a real address, where NDI and OMT have no such parameter at all.
+**How SRT uses ffmpeg.** NDI and OMT carry raw frames, so a node is a thin
+wrapper over the SDK. SRT carries an MPEG transport stream of *compressed*
+video, so it needs a codec. Frame Ferret runs **ffmpeg as a subprocess** rather
+than linking it:
+
+- **You point at the install you already have.** The node's `"ffmpeg"` setting,
+  `$FERRET_FFMPEG`, `$PATH`, or the usual locations — in that order. An
+  explicit path that is wrong is an error, never a quiet fallback to some other
+  ffmpeg.
+- **No ABI coupling.** libavcodec's structs change between major versions;
+  mirroring them by hand would be far more fragile than NDI, OMT or libsrt,
+  which all expose deliberately flat C ABIs.
+- **Licensing stays simple.** ffmpeg is LGPL and commonly built as GPL with
+  libx264. A separate process over a pipe raises no question that an MIT
+  codebase needs to answer.
+- **CI keeps building**, with no ffmpeg on the runners and nothing to detect.
+
+Hardware encoders are preferred where present — on this Mac it selects
+`h264_videotoolbox` over `libx264`.
+
+**What is honestly unproven.** The SRT source connects, spawns ffmpeg and
+reports cleanly, but **no picture has been decoded end to end**, because no
+trustworthy reference sender could be built on this machine: Homebrew's ffmpeg
+8.1.2 has no SRT protocol compiled in, `srt-file-transmit` speaks SRT's stream
+API and is correctly rejected by our live-mode receiver, and
+`srt-live-transmit` only bridges UDP to SRT, so its own UDP leg could not be
+confirmed independently. Two real bugs *were* found and fixed while trying —
+see the commit — but "it decodes a picture" is not yet a claim this repo makes.
+
+SRT is the **only transport here that can genuinely bind to a chosen
+interface**: `srt_bind()` takes a real address, where NDI and OMT have no such
+parameter at all.
 
 **Syphon, verified by a consumer that is not this code.** WebLinked's
 `syphon_probe` links **Resolume Arena's bundled Syphon 5**, not the Syphon 6

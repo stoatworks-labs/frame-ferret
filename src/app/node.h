@@ -76,6 +76,12 @@ struct NodeConfig {
   int height = 1080;
   PixelFormat format = PixelFormat::unknown;  ///< unknown = node's own default.
 
+  /// Which ffmpeg to use, for the nodes that need an external codec. Empty
+  /// searches $FERRET_FFMPEG, then $PATH, then the usual install locations.
+  /// A value containing a separator is an explicit path and is never fallen
+  /// back from — see Ffmpeg::locate.
+  std::string ffmpegPath;
+
   bool enabled = true;
 };
 

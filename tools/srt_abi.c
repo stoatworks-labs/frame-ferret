@@ -24,5 +24,10 @@ int main(void) {
   printf("SRT_INVALID_SOCK %d\n", SRT_INVALID_SOCK);
   printf("SRT_LIVE_DEF_PLSIZE %d\n", SRT_LIVE_DEF_PLSIZE);
   printf("sizeof(SRT_TRACEBSTATS) %zu\n", sizeof(SRT_TRACEBSTATS));
+  printf("SRT_ETIMEOUT     %d\n", SRT_ETIMEOUT);
+  printf("SRT_EASYNCRCV    %d\n", SRT_EASYNCRCV);
+  printf("SRT_ECONNLOST    %d\n", SRT_ECONNLOST);
+  printf("SRT_ENOCONN      %d\n", SRT_ENOCONN);
+  printf("SRT_EINVSOCK     %d\n", SRT_EINVSOCK);
   return 0;
 }

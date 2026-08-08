@@ -1,5 +1,6 @@
 #include "transports/srt_socket.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -40,6 +41,14 @@ constexpr int SRTT_LIVE = 0;
 constexpr int SRT_ERROR = -1;
 constexpr int SRT_INVALID_SOCK = -1;
 
+// Error codes, so a timeout is recognised by its CODE and never by its
+// message. The first version of this file matched the string "timeout" — and
+// libsrt says "Operation timed out", which does not contain it. Every receive
+// timeout therefore read as a dead link, the connection was torn down, and the
+// symptom was an SRT source that connected and immediately dropped.
+constexpr int SRT_ETIMEOUT = 6003;   // blocking recv hit SRTO_RCVTIMEO
+constexpr int SRT_EASYNCRCV = 6002;  // nothing available, non-blocking
+
 /// SRT_TRACEBSTATS, the subset we read. The struct is large and its tail
 /// changes between releases, so we allocate generously and only touch fields
 /// whose offsets are stable in 1.4 and 1.5.
@@ -73,6 +82,7 @@ struct Api {
   int (*setsockflag)(int, int, const void*, int) = nullptr;
   int (*getsockflag)(int, int, void*, int*) = nullptr;
   const char* (*getlasterror_str)() = nullptr;
+  int (*getlasterror)(int*) = nullptr;  // returns the code; out-param is errno
   int (*bstats)(int, TraceStats*, int) = nullptr;
   const char* (*getversion_str)() = nullptr;
   uint32_t (*getversion)() = nullptr;
@@ -155,6 +165,7 @@ bool loadRuntime(std::string& error) {
   }
 
   g_lib.symbol("srt_getsockflag", g_api.getsockflag);
+  g_lib.symbol("srt_getlasterror", g_api.getlasterror);
   g_lib.symbol("srt_bstats", g_api.bstats);
   g_lib.symbol("srt_getversion", g_api.getversion);
 
@@ -217,15 +228,30 @@ class Connection : public SrtConnection {
     if (n > 0) return n;
     if (n == 0) return 0;
 
-    // SRT reports a timeout as an error, so a timeout and a dead link look
-    // identical unless the message is inspected. Treating every error as a
-    // disconnection would flap the output to black on any quiet moment.
-    const std::string message = lastSrtError();
-    if (message.find("timeout") != std::string::npos ||
-        message.find("Timeout") != std::string::npos) {
-      return 0;
+    // SRT reports a timeout as an error, so a quiet moment and a dead link are
+    // the same return value. Distinguished by CODE, never by message: libsrt's
+    // wording is "Operation timed out", and matching the word "timeout" — as
+    // this did at first — misses it, so every gap between packets tore the
+    // connection down and the source connected and instantly dropped.
+    // srt_getlasterror RETURNS the SRT code; its int* out-param is the system
+    // errno, not the code. Reading the out-param — as this did at first —
+    // yields 0 for everything, so every timeout looked like an unknown error
+    // and tore the connection down. The message said "transmission timed out"
+    // the whole time.
+    int systemErrno = 0;
+    const int code =
+        g_api.getlasterror ? g_api.getlasterror(&systemErrno) : 0;
+    if (code == SRT_ETIMEOUT || code == SRT_EASYNCRCV) return 0;
+
+    // Reported once with the code, because "the SRT source keeps reconnecting"
+    // is otherwise indistinguishable between a dozen causes.
+    if (!reportedError_) {
+      reportedError_ = true;
+      std::fprintf(stderr, "srt: recv failed, code %d: %s\n", code,
+                   lastSrtError().c_str());
     }
     connected_ = false;
+    lastError_ = lastSrtError();
     return -1;
   }
 
@@ -268,6 +294,8 @@ class Connection : public SrtConnection {
   std::string description_;
   bool connected_ = true;
   int currentRcvTimeout_ = -2;
+  bool reportedError_ = false;
+  std::string lastError_;
 };
 
 /// Applies the options that must be set before connect/bind.

@@ -5,6 +5,7 @@
 #include "sinks/decklink.h"
 #include "sinks/syphon.h"
 #include "transports/omt.h"
+#include "transports/srt.h"
 
 namespace ferret {
 
@@ -16,6 +17,7 @@ bool isImplemented(NodeKind kind) {
     case NodeKind::omt:
     case NodeKind::decklink:
     case NodeKind::sharedSurfaceOut:
+    case NodeKind::srt:
       return true;
     default:
       return false;
@@ -91,6 +93,33 @@ bool buildNodes(const AppConfig& config, Engine& engine,
         auto sink = std::make_unique<PreviewSink>(node);
         previews.push_back(sink.get());
         engine.addSink(std::move(sink));
+        ++built;
+        break;
+      }
+
+      case NodeKind::srt: {
+        // Receive only for now. An SRT *sink* needs an encoder and a muxer,
+        // which is the other half of this work — see docs/ROADMAP.md. A node
+        // that is not used as somebody's source would therefore be a sender we
+        // cannot build, so say that rather than constructing something inert.
+        bool usedAsSource = false;
+        for (const auto& [sinkId, sourceId] : config.routes) {
+          if (sourceId == node.id) usedAsSource = true;
+        }
+        if (!usedAsSource) {
+          failures.push_back(
+              {node.id,
+               "SRT sending is not implemented yet — it needs an H.264 encoder "
+               "and a TS muxer. SRT receiving works; route this node into a "
+               "sink to use it"});
+          continue;
+        }
+        auto source = makeSrtSource(node, reason);
+        if (!source) {
+          failures.push_back({node.id, reason});
+          continue;
+        }
+        engine.addSource(std::move(source), PixelFormat::uyvy8);
         ++built;
         break;
       }

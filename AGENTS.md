@@ -47,12 +47,19 @@ upgrade "compiles" to "works".
 - **SRT's transport layer**, proven by a real loopback listener/caller pair
   carrying bytes. **There is no SRT node** — see below.
 
-**SRT is deliberately half-done, and the half that is missing is the codec.**
-NDI and OMT carry raw frames; SRT carries an MPEG transport stream of
-*compressed* video. So an SRT source must demux and decode and an SRT sink must
-encode and mux, and none of that is written. `NodeKind::srt` is therefore NOT in
-`isImplemented()`, on purpose: a node that cannot carry video is worse than an
-absent one. `src/transports/srt_socket.*` is finished and tested underneath it.
+**SRT receive is written but has NEVER decoded a picture end to end.** The
+socket layer is verified by loopback; the node connects, spawns ffmpeg and
+reports cleanly; the decode is unproven. The reason is the test rig, not
+confidence in the code: Homebrew's ffmpeg 8.1.2 has **no SRT protocol**,
+`srt-file-transmit` uses SRT's *stream* API and our live-mode receiver
+correctly rejects it ("MessageAPI/StreamAPI collision"), and
+`srt-live-transmit` only bridges UDP↔SRT so its UDP leg could not be checked
+independently. **Do not claim SRT works.** The next person needs a real SRT
+encoder — OBS, vMix, a hardware unit, or an ffmpeg built with `--enable-libsrt`.
+
+**SRT sending is not written at all** — it needs an encoder and a TS muxer.
+A node not used as some sink's source therefore reports that rather than
+constructing something inert.
 
 Note SRT **can** bind to a chosen interface — `srt_bind()` takes a real address
 and there is SRTO_BINDTODEVICE — which makes it the first transport here where
