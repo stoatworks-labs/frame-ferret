@@ -57,7 +57,7 @@ Honest, and it will stay honest as this grows.
 | CLI (`interfaces`, `kinds`, `version`) | **Runs** |
 | NDI, OMT, SRT, ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
-| UVC virtual camera | **Not started.** Needs an Apple entitlement — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
+| UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
 | DeckLink, Syphon/Spout, HTML output | **Not started** |
 | Web control UI, tray launcher | **Not started** |

@@ -57,14 +57,17 @@ Sequenced by what the platform can actually support — see
 
 ## Phase 6 — the OS extensions
 
-Full detail in [03-os-extensions.md](03-os-extensions.md). **Start the Apple
-entitlement request at the beginning of phase 1**, not here — it is calendar
-time, not work.
+Full detail in [03-os-extensions.md](03-os-extensions.md). There is **no Apple
+application to make** — the System Extension capability is a checkbox on an App
+ID. The prerequisite is instead a provisioning profile, which the fleet's
+release harness has never produced.
 
 1. Windows virtual camera (MFVirtualCamera) — cheapest of the four
-2. macOS virtual camera (CMIOExtension), once the entitlement lands
-3. Windows virtual display (IddCx), if attestation signing is worth opening
-4. macOS virtual display — private API, off by default, experimental, and only
+2. Provisioning-profile support in `release-lib.sh` — fleet infrastructure, and
+   the gate on everything below
+3. macOS virtual camera (CMIOExtension)
+4. Windows virtual display (IddCx), if attestation signing is worth opening
+5. macOS virtual display — private API, off by default, experimental, and only
    if phase 3 leaves a real gap
 
 ## Unresolved, and needing a decision before the installer is designed

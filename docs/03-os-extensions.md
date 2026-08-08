@@ -11,7 +11,7 @@ Nothing here is implemented. Status of every item is **not started**.
 
 | Item | Platform | Mechanism | Difficulty | Blocker |
 |---|---|---|---|---|
-| Virtual camera | macOS | CMIOExtension | Moderate | Entitlement request to Apple |
+| Virtual camera | macOS | CMIOExtension | Moderate | Provisioning profile in the release harness |
 | Virtual camera | Windows | MFVirtualCamera | **Low** | None |
 | Virtual display | Windows | IddCx driver | High | Attestation signing |
 | Virtual display | macOS | — | **Highest** | *No public API exists* |
@@ -32,29 +32,62 @@ used. It is deprecated, requires disabling library validation in every client
 app that loads it, and Apple has been steadily narrowing it. Do not build on
 it.
 
-What CMIOExtension requires:
+### There is no application to Apple, and that was got wrong once
 
-1. **`com.apple.developer.system-extension.install` entitlement.** This is
-   requested from Apple, not enabled in Xcode. Allow weeks.
-2. **A Developer ID certificate**, which this fleet already has — see the
-   fleet's Apple code-signing notes. 14 repos are already signed.
-3. **The app must live in `/Applications`** to activate a system extension.
-   Running from a build directory silently fails to activate.
-4. **User approval** in System Settings → Privacy & Security, once per install.
-5. The extension is a **separate process**: frames cross to it via IOSurface,
-   not by a function call. Budget for that boundary in the frame path design.
+An earlier draft of this document said the
+`com.apple.developer.system-extension.install` entitlement had to be requested
+from Apple and to allow weeks for it. **That is wrong.** "System Extension"
+appears in Apple's own [supported capabilities for
+macOS](https://developer.apple.com/help/account/reference/supported-capabilities-macos)
+as an ordinary capability — a checkbox on an App ID in Certificates,
+Identifiers & Profiles. The capabilities that genuinely need a request are
+DriverKit and Endpoint Security, neither of which we touch.
 
-Consequences that reach the rest of the product:
+The one restricted entitlement in this area is
+`com.apple.developer.system-extension.redistributable`, which lets a *different*
+team's application install your extension. We do not need it.
 
-- The tray launcher cannot be the only shipping artefact. The system extension
-  has to be inside a properly located, properly signed `.app`.
+### What it does require
+
+The fleet already signs and notarises everything, and **that is necessary but
+not sufficient.** The genuinely new thing is a **provisioning profile**, which
+this fleet's release harness has never produced.
+
+A Developer ID app normally needs no provisioning profile — which is exactly why
+this has never come up before. Adding an extension with a capability makes one
+mandatory, because some entitlements are carried in the code signature and
+others are carried by the profile. macOS looks for it at
+`YourApp.app/Contents/embedded.provisionprofile`.
+
+So, against what the fleet has today:
+
+| Already have | Must add |
+|---|---|
+| Developer ID Application cert (`3G7USP8N73`) | Explicit App IDs — not wildcard — for **both** the container app and the extension |
+| Hardened runtime, `--timestamp`, inside-out signing, no `--deep` | The System Extension capability ticked on those App IDs |
+| Notarisation and stapling | A Developer ID provisioning profile per App ID, embedded in each bundle |
+| | The extension's team ID matching the container's |
+| | The app installed in `/Applications` — activation from a build directory silently fails |
+| | User approval in System Settings → Privacy & Security, once per install |
+
+**This is a real change to `release-lib.sh`, not a config tweak.** `rl_mac_sign`
+walks for Mach-O files and signs inside-out; it has no concept of a provisioning
+profile. The profile has to be fetched and embedded *before* signing.
+
+Other consequences that reach the rest of the product:
+
+- The extension is a **separate process**. Frames cross to it via IOSurface, not
+  by a function call. Budget for that boundary in the frame path design.
+- The tray launcher cannot be the only shipping artefact. The extension has to
+  be inside a properly located, properly signed `.app`.
 - Ad-hoc signed builds cannot test this path at all. Every iteration needs a
-  real Developer ID signature.
-- The fleet's existing "unpack into Application Support on first run" trick,
-  which WebLinked uses to dodge the Gatekeeper nested-helper problem, is
+  real Developer ID signature, so CI — which has no signing config and falls
+  back to ad-hoc — cannot verify it.
+- The fleet's "unpack into Application Support on first run" trick, which
+  WebLinked uses to dodge the Gatekeeper nested-helper problem, is
   **incompatible** with system extension activation, which requires
-  `/Applications`. These two constraints pull in opposite directions and the
-  conflict needs resolving before the installer is designed.
+  `/Applications`. These pull in opposite directions and the conflict needs
+  resolving before the installer is designed.
 
 ## Windows virtual camera — MFVirtualCamera
 
@@ -126,9 +159,11 @@ much of the virtual display's purpose is left over.
 1. Windows virtual camera (MFVirtualCamera) — cheapest, validates the sink path
 2. macOS window/application capture via ScreenCaptureKit — public API, and may
    absorb much of the virtual display requirement
-3. **Start the Apple entitlement request now**, in parallel with everything
-   else, because it is calendar time rather than work
-4. macOS virtual camera (CMIOExtension), once the entitlement lands
+3. **Teach `release-lib.sh` to embed a provisioning profile.** This is the real
+   macOS prerequisite, and it is fleet infrastructure work rather than Frame
+   Ferret work — nothing else in the fleet needs it yet, but nothing else in
+   the fleet can ship a system extension until it exists
+4. macOS virtual camera (CMIOExtension)
 5. Windows IddCx virtual display, if the Partner Center route is worth opening
 6. macOS virtual display, private API, flagged experimental — last, and only if
    step 2 leaves a real gap
