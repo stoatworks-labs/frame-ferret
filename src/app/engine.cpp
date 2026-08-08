@@ -63,23 +63,30 @@ void Engine::loop() {
   uint64_t fpsWindowTicks = 0;
 
   while (!stopping_.load()) {
-    // Poll every source for whatever it has. A source that has nothing this
-    // tick keeps its previous frame in `latest` but is marked disconnected if
-    // it says so, which is what makes the router emit black rather than a
-    // frozen picture.
+    // Poll every source, every tick, unconditionally.
+    //
+    // Never gate this on `connected()`. A network receiver only *becomes*
+    // connected as a result of being polled — NDI reports nothing until its
+    // first captured frame — so skipping the poll for a disconnected source is
+    // a deadlock: it never polls, so it never connects, so it never polls. The
+    // synthetic test-pattern source hides this completely, because it reports
+    // connected from construction. This cost a real debugging session the first
+    // time a transport was attached, and the regression is pinned in
+    // tests/test_engine.cpp.
     for (auto& entry : sources_) {
-      const bool connected = entry.source->connected();
-      router_.setSourceConnected(entry.source->id(), connected);
-      if (!connected) {
-        entry.hasFrame = false;
-        continue;
-      }
       // Short timeout: this loop owns the pacing, not the source.
       entry.source->poll(1, [&entry](const VideoFrame& f) {
         entry.latest.assign(f);
         entry.hasFrame = true;
       });
-      if (!entry.hasFrame) router_.setSourceConnected(entry.source->id(), false);
+
+      // A source that delivered nothing this tick keeps its previous frame —
+      // correct for any source slower than the loop. A source that reports
+      // itself disconnected drops it, so the router emits black rather than
+      // holding a frozen picture.
+      const bool connected = entry.source->connected();
+      if (!connected) entry.hasFrame = false;
+      router_.setSourceConnected(entry.source->id(), connected && entry.hasFrame);
     }
 
     serveTick(tick);

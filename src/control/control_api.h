@@ -22,6 +22,7 @@ class ControlApi {
  public:
   ControlApi(Engine& engine, const AppConfig& config,
              std::vector<NodeFailure> failures,
+             std::vector<NodeFailure> warnings,
              std::vector<PreviewSink*> previews);
 
   void handle(const HttpServer::Request& request,
@@ -40,6 +41,7 @@ class ControlApi {
   Engine& engine_;
   AppConfig config_;
   std::vector<NodeFailure> failures_;
+  std::vector<NodeFailure> warnings_;
   std::map<std::string, PreviewSink*> previews_;
 };
 

@@ -27,9 +27,19 @@ struct NodeFailure {
 /// should not lose the NDI output too, and a config written for a machine with
 /// hardware should still start on one without it.
 ///
+/// `warnings` collects settings that were accepted but could not be honoured —
+/// distinct from `failures`, which are nodes that do not exist at all.
+///
+/// The distinction earns its keep immediately: NDI's C API has no interface
+/// parameter of any kind, so `"interface": "en0"` on an NDI node is a setting
+/// this program cannot apply. Dropping it silently would leave an operator
+/// believing a stream is pinned to a NIC when it is not, which is exactly the
+/// class of fault that gets diagnosed as a network problem on site.
+///
 /// Returns false only for a failure that leaves nothing to run at all.
 bool buildNodes(const AppConfig& config, Engine& engine,
                 std::vector<NodeFailure>& failures,
+                std::vector<NodeFailure>& warnings,
                 std::vector<PreviewSink*>& previews, std::string& error);
 
 /// The kinds this build can actually construct today. Everything else in

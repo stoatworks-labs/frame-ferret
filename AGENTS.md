@@ -13,7 +13,7 @@ it is the whole mental model.
 This section is the most important one in the file. Keep it honest, and never
 upgrade "compiles" to "works".
 
-**Built, tested and run on this machine** — 416 checks across 8 binaries:
+**Built, tested and run on this machine** — 456 checks across 9 binaries:
 
 - The crosspoint `Router` and its plan-every-sink invariant — 36 checks.
 - Exact rational rates, tick deadlines and the drift property — 40 checks,
@@ -35,9 +35,13 @@ upgrade "compiles" to "works".
   tick — at 49.99 fps with zero late ticks. The crosspoint has been clicked in
   a real browser and the resulting route verified against the REST API.
 
-**Not written at all.** Every transport (NDI, OMT, SRT, ST 2110), every capture
-source, every hardware output, the OS extensions, and the tray launcher. There
-is no *real* video path — only the synthetic one. Do not describe any of it as
+- **NDI, both directions, verified against a separate codebase.** oxbow
+  discovers `MAC (FerretTest)` and decodes all eight bars in the right order;
+  Frame Ferret receives oxbow's stream at 59.97 fps as a UYVY copy. Runtime
+  loaded, never linked. 40 checks on the ABI and the no-runtime path.
+
+**Not written at all.** OMT, SRT, ST 2110, every capture source, every hardware
+output, the OS extensions, and the tray launcher. Do not describe any of it as
 working.
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
@@ -98,6 +102,23 @@ Carried forward from the fleet, because these will be hit again here.
 - **Never link NDI at build time.** Runtime-load it. A cross-compiled target
   otherwise ships with NDI silently disabled, which is what happened to
   openstage for every release until someone checked.
+- **NDI's audio FourCC is `FLTp`, with a LOWERCASE p**, despite every document
+  writing "FLTP". Assume the obvious spelling and the SDK treats every audio
+  frame as an unknown format: video works perfectly and audio silently never
+  arrives. Pinned in `tests/test_ndi_abi.cpp`.
+- **NDI has no interface binding of any kind.** Not on send, receive or
+  discovery — `grep -i interface` across the whole SDK header set returns
+  nothing. `"interface"` on an NDI node therefore produces a *warning*, not a
+  silent no-op; binding is done through the NDI runtime's own
+  `ndi-config.v1.json`. `warnings` exists in the factory precisely for this.
+- **Never gate `poll()` on `connected()` in the engine.** A network receiver
+  only becomes connected as a *result* of being polled, so gating deadlocks it:
+  never polls, never connects, never polls. Invisible to synthetic sources,
+  which report connected from construction. Pinned by
+  `aSourceThatConnectsOnlyWhenPolledStillWorks`.
+- **A transport node's direction comes from the routes, not its kind.** `ndi`
+  can be either, so the control API asks the engine which it was actually built
+  as; inferring from the kind renders an NDI receiver as a sink too.
 
 ## Where the reusable code already is
 

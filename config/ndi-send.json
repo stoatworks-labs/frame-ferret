@@ -1,0 +1,36 @@
+{
+  "rate": "50",
+  "control": {
+    "bind": "127.0.0.1",
+    "port": 8740
+  },
+  "nodes": [
+    {
+      "id": "bars",
+      "kind": "test",
+      "label": "Colour bars",
+      "width": 1280,
+      "height": 720,
+      "rate": "50"
+    },
+    {
+      "id": "ndiout",
+      "kind": "ndi",
+      "label": "NDI out",
+      "target": "Frame Ferret",
+      "width": 1280,
+      "height": 720,
+      "rate": "50"
+    },
+    {
+      "id": "monitor",
+      "kind": "preview",
+      "width": 1280,
+      "height": 720
+    }
+  ],
+  "routes": {
+    "ndiout": "bars",
+    "monitor": "bars"
+  }
+}

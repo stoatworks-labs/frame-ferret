@@ -52,6 +52,17 @@ class Engine {
   };
   Counters counters() const;
 
+  /// Which direction a node was actually built as. A transport kind can be
+  /// either, and the config decides — so the control API must ask rather than
+  /// infer from the kind, or an NDI receiver is rendered as a sink as well and
+  /// the crosspoint grows a row nothing can ever feed.
+  bool hasSource(const std::string& id) const {
+    return sourceIndex_.find(id) != sourceIndex_.end();
+  }
+  bool hasSink(const std::string& id) const {
+    return sinkIndex_.find(id) != sinkIndex_.end();
+  }
+
   /// Route reasons from the most recent plan, keyed by sink id. Empty string
   /// means the sink is receiving video. Surfaced by the control API so an
   /// operator sees *why* an output is black.

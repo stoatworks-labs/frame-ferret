@@ -21,6 +21,7 @@ endif()
 # dropped a quarter of all messages. Anything decision-shaped belongs here.
 # ---------------------------------------------------------------------------
 add_library(ferret_core STATIC
+  src/core/dylib.cpp
   src/core/frame.cpp
   src/core/json.cpp
   src/core/pixel_format.cpp
@@ -34,6 +35,7 @@ add_library(ferret_core STATIC
   src/app/node.cpp
   src/app/router.cpp
   src/net/interfaces.cpp
+  src/transports/ndi.cpp
 )
 target_include_directories(ferret_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -48,7 +50,6 @@ add_executable(frame-ferret
   src/app/main.cpp
   src/control/control_api.cpp
   src/control/http_server.cpp
-  src/core/dylib.cpp
   src/diag/diag.cpp
 )
 target_link_libraries(frame-ferret PRIVATE ferret_core)
@@ -70,7 +71,7 @@ endif()
 # ---------------------------------------------------------------------------
 enable_testing()
 
-foreach(t router rational pixel_format interfaces convert config engine web_assets)
+foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi)
   add_executable(test_${t} tests/test_${t}.cpp)
   target_link_libraries(test_${t} PRIVATE ferret_core)
   add_test(NAME ${t} COMMAND test_${t})

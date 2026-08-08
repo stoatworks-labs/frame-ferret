@@ -3,15 +3,18 @@
 #include "control/web_assets.h"
 #include "core/json.h"
 #include "net/interfaces.h"
+#include "transports/ndi.h"
 
 namespace ferret {
 
 ControlApi::ControlApi(Engine& engine, const AppConfig& config,
                        std::vector<NodeFailure> failures,
+                       std::vector<NodeFailure> warnings,
                        std::vector<PreviewSink*> previews)
     : engine_(engine),
       config_(config),
-      failures_(std::move(failures)) {
+      failures_(std::move(failures)),
+      warnings_(std::move(warnings)) {
   for (auto* p : previews) {
     if (p) previews_[p->id()] = p;
   }
@@ -104,10 +107,18 @@ void ControlApi::handleState(HttpServer::Response& response) const {
     n.set("available", json::Value(failure.empty()));
     if (!failure.empty()) n.set("unavailable", json::Value(failure));
 
-    if (canSource(node.kind)) {
+    // A node that built reports the direction it really took; one that failed
+    // to build has no direction, so fall back to what its kind allows — it
+    // still has to appear, with its reason.
+    const bool built = engine_.hasSource(node.id) || engine_.hasSink(node.id);
+    const bool asSource =
+        built ? engine_.hasSource(node.id) : canSource(node.kind);
+    const bool asSink = built ? engine_.hasSink(node.id) : canSink(node.kind);
+
+    if (asSource) {
       sources.push(n);
     }
-    if (canSink(node.kind)) {
+    if (asSink) {
       auto s = n;
       s.set("routedFrom", json::Value(engine_.router().routedSource(node.id)));
       auto it = reasons.find(node.id);
@@ -139,6 +150,25 @@ void ControlApi::handleState(HttpServer::Response& response) const {
     fails.push(std::move(v));
   }
   state.set("failures", std::move(fails));
+
+  // Warnings are settings that were accepted and could not be applied — a
+  // different thing from a node that does not exist, and worth its own place
+  // in the UI rather than being folded into failures.
+  auto warns = json::Value::array();
+  for (const auto& w : warnings_) {
+    auto v = json::Value::object();
+    v.set("id", json::Value(w.id));
+    v.set("reason", json::Value(w.reason));
+    warns.push(std::move(v));
+  }
+  state.set("warnings", std::move(warns));
+
+  auto ndi = json::Value::object();
+  ndi.set("available", json::Value(NdiRuntime::available()));
+  ndi.set("path", json::Value(NdiRuntime::loadedPath()));
+  const std::string why = NdiRuntime::unavailableReason();
+  if (!why.empty()) ndi.set("reason", json::Value(why));
+  state.set("ndi", std::move(ndi));
 
   response.json(state.serialize(true));
 }

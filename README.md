@@ -1,13 +1,13 @@
 # Frame Ferret
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
-> (Anthropic), directed and reviewed by a human author. A synthetic source runs
-> end to end through the router, the pixel-format conversion and a live web
-> control page — measured at 49.99 fps with zero late ticks, and the colour
-> conversion is checked against BT.709 colour bars by pixel readback. 8 test
-> binaries, 416 checks, all passing. **No real video has passed through it yet:**
-> every transport, every capture source and every hardware output is designed
-> and documented but not implemented. See [Status](#status).
+> (Anthropic), directed and reviewed by a human author. **NDI works in both
+> directions**, verified against oxbow — a separate codebase — which discovers
+> Frame Ferret's stream and decodes its colour bars correctly, and whose own
+> stream Frame Ferret receives at 59.97 fps. 9 test binaries, 456 checks, all
+> passing. Everything else — OMT, SRT, ST 2110, screen capture, the UVC camera,
+> DeckLink, Syphon/Spout — is designed and documented but **not implemented**,
+> and no hardware output exists on any platform. See [Status](#status).
 
 A software virtual capture card. One application that is an **NDI, OMT, SRT and
 ST 2110 endpoint** — transmitting and receiving — over a chosen network
@@ -41,7 +41,9 @@ which is which.
 **Everywhere**
 
 - Explicit network interface binding, because a stream on the wrong NIC is
-  diagnosed on site as a network fault
+  diagnosed on site as a network fault. Note NDI is the exception: its C API has
+  no interface parameter at all, so Frame Ferret warns rather than pretending
+  the setting applied
 - A system tray launcher, configured through a web browser, in the same shape
   as [WebLinked](https://github.com/stoatworks-labs/weblinked)
 
@@ -61,7 +63,8 @@ Honest, and it will stay honest as this grows.
 | Test-pattern source, preview sink | **Built and run** |
 | Web control page + JSON API | **Built and driven in a browser.** Crosspoint clicks verified against the API |
 | CLI (`run`, `selftest`, `interfaces`, `kinds`) | **Runs** |
-| NDI, OMT, SRT, ST 2110 | **Not started.** Designed only |
+| **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
+| OMT, SRT, ST 2110 | **Not started.** Designed only |
 | Screen / window / application capture | **Not started** |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
@@ -79,6 +82,18 @@ exactly one action per sink per tick, zero late ticks, 49.99 fps measured.
 Unrouting the sink from the browser turned the output black *and kept it
 running at 50 fps*, reporting `no source routed` — which is the invariant this
 whole program is built around, observed rather than asserted.
+
+**NDI, both directions, against an independent implementation.** Sending:
+[oxbow](https://github.com/stoatworks-labs/oxbow) discovers `MAC (FerretTest)`,
+receives 1280x720p50, and all eight colour bars decode in the right order with
+the right hues. Receiving: Frame Ferret takes oxbow's stream at 59.97 fps, 344
+frames with 2 black (the ticks before connection), as a `copy` in UYVY with no
+conversion.
+
+One honest note on that measurement: saturated blue comes back 178 rather than
+191. That is NDI's SpeedHQ compression, not this code — oxbow's own sender
+through the same round trip lands on exactly the same 178. The control
+experiment mattered; the number alone would have looked like a bug.
 
 Two constraints found while scoping, both written up in full because they
 shape everything downstream:
@@ -116,6 +131,12 @@ Prove the whole frame path without a network or any hardware:
 
 ```bash
 ./build/frame-ferret interfaces
+```
+
+Send colour bars as NDI, then find them from any NDI receiver:
+
+```bash
+./build/frame-ferret run --config config/ndi-send.json
 ```
 
 `config/example.json` is a minimal working configuration.

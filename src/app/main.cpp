@@ -97,15 +97,21 @@ int cmdKinds() {
 /// Builds the engine from `config` and reports what could not be built.
 bool prepare(const ferret::AppConfig& config, ferret::Engine& engine,
              std::vector<ferret::NodeFailure>& failures,
+             std::vector<ferret::NodeFailure>& warnings,
              std::vector<ferret::PreviewSink*>& previews) {
   std::string error;
-  if (!ferret::buildNodes(config, engine, failures, previews, error)) {
+  if (!ferret::buildNodes(config, engine, failures, warnings, previews,
+                          error)) {
     std::fprintf(stderr, "%s\n", error.c_str());
     return false;
   }
   for (const auto& f : failures) {
     std::fprintf(stderr, "  unavailable: %s — %s\n", f.id.c_str(),
                  f.reason.c_str());
+  }
+  for (const auto& w : warnings) {
+    std::fprintf(stderr, "  warning: %s — %s\n", w.id.c_str(),
+                 w.reason.c_str());
   }
   return true;
 }
@@ -127,9 +133,9 @@ int cmdRun(const std::string& configPath) {
   }
 
   ferret::Engine engine;
-  std::vector<ferret::NodeFailure> failures;
+  std::vector<ferret::NodeFailure> failures, warnings;
   std::vector<ferret::PreviewSink*> previews;
-  if (!prepare(config, engine, failures, previews)) return 1;
+  if (!prepare(config, engine, failures, warnings, previews)) return 1;
 
   std::string error;
   if (!engine.start(error)) {
@@ -137,7 +143,7 @@ int cmdRun(const std::string& configPath) {
     return 1;
   }
 
-  ferret::ControlApi api(engine, config, failures, previews);
+  ferret::ControlApi api(engine, config, failures, warnings, previews);
   ferret::HttpServer server;
   if (config.controlPort > 0) {
     if (!ferret::HttpServer::portAvailable(config.controlBind,
@@ -199,9 +205,9 @@ int cmdSelftest() {
   ferret::AppConfig config = ferret::selftestConfig();
 
   ferret::Engine engine;
-  std::vector<ferret::NodeFailure> failures;
+  std::vector<ferret::NodeFailure> failures, warnings;
   std::vector<ferret::PreviewSink*> previews;
-  if (!prepare(config, engine, failures, previews)) return 1;
+  if (!prepare(config, engine, failures, warnings, previews)) return 1;
 
   if (previews.empty()) {
     std::fprintf(stderr, "selftest: no preview sink was built\n");

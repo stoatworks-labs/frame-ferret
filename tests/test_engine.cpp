@@ -248,6 +248,67 @@ void everyBlackCarriesAReason() {
   CHECK(!it->second.empty());
 }
 
+/// A source that only reports itself connected once it has been polled — which
+/// is how every real network receiver behaves, NDI included.
+class ConnectsOnFirstPollSource : public Source {
+ public:
+  explicit ConnectsOnFirstPollSource(std::string id) : id_(std::move(id)) {
+    pixels_.assign(16 * 8 * 4, 0x77);
+  }
+
+  const std::string& id() const override { return id_; }
+  bool connected() const override { return polled_ > 0; }
+
+  bool poll(unsigned,
+            const std::function<void(const VideoFrame&)>& onVideo) override {
+    ++polled_;
+    VideoFrame f;
+    f.width = 16;
+    f.height = 8;
+    f.strideBytes = 16 * 4;
+    f.data = pixels_.data();
+    f.format = PixelFormat::bgra8;
+    if (onVideo) onVideo(f);
+    return true;
+  }
+
+  int polled() const { return polled_; }
+
+ private:
+  std::string id_;
+  std::vector<uint8_t> pixels_;
+  int polled_ = 0;
+};
+
+/// The regression: the engine must poll every source unconditionally.
+///
+/// Gating the poll on `connected()` deadlocks any real receiver — it never
+/// polls, so it never connects, so it never polls — and the deadlock is
+/// invisible to every synthetic source, because those report connected from
+/// construction. This is what actually happened the first time NDI was
+/// attached: 654 ticks, 0 frames, "source is not connected".
+void aSourceThatConnectsOnlyWhenPolledStillWorks() {
+  Engine engine;
+  engine.setRate(Rate{100, 1});
+
+  auto owned = std::make_unique<ConnectsOnFirstPollSource>("late");
+  auto* src = owned.get();
+  engine.addSource(std::move(owned), PixelFormat::bgra8);
+
+  auto* sink = new RecordingSink("out", {});
+  engine.addSink(std::unique_ptr<Sink>(sink));
+
+  std::string err;
+  CHECK(engine.router().route("out", "late", err));
+  CHECK(engine.start(err));
+  waitForTicks(engine, 15);
+  engine.stop();
+
+  CHECK(src->polled() > 0);
+  CHECK(sink->frames > 0);
+  CHECK_EQ(sink->lastByte, uint8_t{0x77});
+}
+
 void startingWithNoSinksIsAnError() {
   Engine engine;
   std::string err;
@@ -290,6 +351,7 @@ void run() {
   aConvertRouteReallyConverts();
   muteMakesEverySinkBlackAndKeepsTheRoute();
   everyBlackCarriesAReason();
+  aSourceThatConnectsOnlyWhenPolledStillWorks();
   startingWithNoSinksIsAnError();
   anInvalidRateIsRejected();
   theLoopIsPacedByItsRate();

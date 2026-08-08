@@ -22,13 +22,23 @@ A synthetic route proven through the whole program.
 416 checks. Measured: 9049 ticks at 49.99 fps, zero late, one action per sink
 per tick. Still **no real video** — the only source is synthetic.
 
-## Phase 1b — the first real stream
+## Phase 1b — the first real stream ✅ done
 
-- **NDI in, NDI out**, runtime-loaded, bound to a chosen interface
-- Audio through the router, not only video
+**NDI in and out**, runtime-loaded, verified against oxbow in both directions.
+456 checks.
 
-Done when NDI → NDI holds frame rate for ten minutes against an independent
-receiver, with the interface binding confirmed by `lsof`.
+Two things this phase settled, both of which were assumptions in the plan:
+
+- **NDI cannot be bound to an interface.** Its C API has no such parameter, on
+  send, receive or discovery. The roadmap said "bound to a chosen interface";
+  that is not achievable through the SDK, so the setting now produces a warning
+  and binding is the NDI runtime's own `ndi-config.v1.json`. Every other
+  transport still gets real interface binding.
+- **Audio is plumbed but unproven.** `AudioFrame` crosses the receiver and the
+  sender, but nothing has yet carried audio end to end, and the router does not
+  route it separately from video. Do not claim NDI audio works.
+
+Still to do here: a ten-minute soak, and audio actually verified.
 
 ## Phase 2 — the rest of the transports
 
