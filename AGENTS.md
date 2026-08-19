@@ -104,6 +104,26 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   Frame Ferret round trip through libndi — **not** against an independent
   receiver, because oxbow's probe has no audio support at all. Do not claim
   more than that.
+- **The vendored `diag` module, wired up and run.** A log at
+  `~/Library/Logs/FrameFerret/`, a crash report proven by sending a real SIGSEGV
+  to a running engine (15 backtrace frames, the effective config, the log tail),
+  and a bundle carrying that crash report — reached from `frame-ferret
+  diagnostics` and from three control-API routes. See
+  [docs/diagnostics.md](docs/diagnostics.md).
+
+  It was dead code until then: compiled into the binary and called from
+  nowhere, `git grep diag::` returning only its own definition. That is worth
+  knowing because the fleet's issue-template sync detects the module by reading
+  the source, not by asking whether anything calls it — so a vendored-and-
+  unreachable module makes the bug form tell reporters to press a button that
+  does not exist. **Vendoring a fleet module is half the job; the other half is
+  a call site.**
+
+  `setLevel`, `writeReport`, `levelFromString`, `trace` and `debug` are still
+  unreached here. WebLinked hangs the first three off control-API routes —
+  raising the log level from the page while the fault is happening, rather than
+  restarting the show to reproduce it, is the one worth lifting next.
+
 - **Display, window, application and ROI capture (macOS), run on this
   machine.** ScreenCaptureKit. A display gave 175 frames of real content, a
   named window 136 with zero black, and two different regions captured as
@@ -188,7 +208,11 @@ Carried forward from the fleet, because these will be hit again here.
   init.** Install signal handlers *after* creating the first OMT sender or
   receiver, or Ctrl-C is swallowed and the process lingers holding port 6400 —
   and the next sender then announces while the zombie owns the port, so
-  receivers connect to a source that never sends.
+  receivers connect to a source that never sends. .NET takes SIGSEGV and SIGBUS
+  too, for its own null checks, so `diag`'s crash handler is installed at
+  startup *and* re-installed alongside those two — first one so a crash while
+  nodes are being built is still reported, second one because by then it may no
+  longer be ours.
 - **NDI's `BGRX_BGRA_flipped` receive format is Windows-only.** Elsewhere
   normalise rows at ingest.
 - **`Source::takeAudio()` is destructive.** Take it ONCE per source per tick in

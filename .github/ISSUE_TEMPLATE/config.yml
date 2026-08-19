@@ -13,6 +13,9 @@ contact_links:
     about: For anything that isn't a defect — questions, setups, ideas in progress.
 
 
+  - name: How to collect a diagnostics bundle
+    url: https://github.com/stoatworks-labs/frame-ferret/blob/main/docs/diagnostics.md
+    about: One file with the logs, the version and the last crash in it.
 
   # GitHub's own private advisory form, NOT a mailto:. stoatworks-labs.com publishes no
   # MX record, so every @stoatworks-labs.com address bounces — a security contact that

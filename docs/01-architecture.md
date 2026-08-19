@@ -68,7 +68,7 @@ src/
   transports/ ndi, omt, srt, st2110 — each implements both Source and Sink
   sinks/     uvc, Syphon/Spout server, decklink, html
   control/   HTTP server, web UI, OSC
-  diag/      vendored fleet diagnostics
+  diag/      vendored fleet diagnostics — see docs/diagnostics.md
 extensions/  the OS extensions — see docs/03-os-extensions.md
 ```
 
