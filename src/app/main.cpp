@@ -16,6 +16,8 @@
 #include "app/router.h"
 #include "control/control_api.h"
 #include "control/http_server.h"
+#include "core/json.h"
+#include "diag/diag.h"
 #include "net/interfaces.h"
 #include "transports/ndi.h"
 #include "sinks/decklink.h"
@@ -99,6 +101,50 @@ int cmdKinds() {
   return 0;
 }
 
+/// The effective configuration, as a crash report and a diagnostics bundle
+/// carry it.
+///
+/// Built here rather than serialised from the parser so it describes what is
+/// actually running — the config file after the launcher's --bind and --port
+/// have won, with every default filled in. A bundle that echoed the file back
+/// would be silent about exactly the two fields most likely to be in dispute.
+///
+/// `control_token` is named to be caught by diag's redaction, which keys on
+/// names that look like secrets. Do not rename it to something that reads as
+/// innocuous.
+ferret::json::Value describeConfig(const ferret::AppConfig& config) {
+  using ferret::json::Value;
+
+  Value out = Value::object();
+  out.set("rate", Value(config.rate.label()));
+  out.set("control_bind", Value(config.controlBind));
+  out.set("control_port", Value(config.controlPort));
+  out.set("control_token", Value(config.controlToken));
+
+  Value nodes = Value::array();
+  for (const auto& n : config.nodes) {
+    Value node = Value::object();
+    node.set("id", Value(n.id));
+    node.set("kind", Value(ferret::toString(n.kind)));
+    node.set("label", Value(n.label));
+    node.set("interface", Value(n.interfaceSelector));
+    node.set("target", Value(n.target));
+    node.set("rate", Value(n.rate.label()));
+    node.set("width", Value(n.width));
+    node.set("height", Value(n.height));
+    node.set("format", Value(ferret::toString(n.format)));
+    nodes.push(std::move(node));
+  }
+  out.set("nodes", std::move(nodes));
+
+  Value routes = Value::object();
+  for (const auto& [sink, source] : config.routes) {
+    routes.set(sink, Value(source));
+  }
+  out.set("routes", std::move(routes));
+  return out;
+}
+
 /// Builds the engine from `config` and reports what could not be built.
 bool prepare(const ferret::AppConfig& config, ferret::Engine& engine,
              std::vector<ferret::NodeFailure>& failures,
@@ -107,18 +153,54 @@ bool prepare(const ferret::AppConfig& config, ferret::Engine& engine,
   std::string error;
   if (!ferret::buildNodes(config, engine, failures, warnings, previews,
                           error)) {
-    std::fprintf(stderr, "%s\n", error.c_str());
+    ferret::diag::error("%s", error.c_str());
     return false;
   }
+  // Logged rather than printed, and not both: diag mirrors warn and above to
+  // stderr itself, so an operator at a terminal still sees every line while the
+  // log keeps the copy the bug report needs. Adding an fprintf beside these
+  // prints each unavailable node twice — and these reasons are long.
+  //
+  // An unavailable node is the single most common thing a bug report is really
+  // about, and on site nobody is watching stderr: the show was started by the
+  // launcher hours earlier.
   for (const auto& f : failures) {
-    std::fprintf(stderr, "  unavailable: %s — %s\n", f.id.c_str(),
-                 f.reason.c_str());
+    ferret::diag::warn("unavailable: %s — %s", f.id.c_str(), f.reason.c_str());
   }
   for (const auto& w : warnings) {
-    std::fprintf(stderr, "  warning: %s — %s\n", w.id.c_str(),
-                 w.reason.c_str());
+    ferret::diag::warn("%s — %s", w.id.c_str(), w.reason.c_str());
   }
   return true;
+}
+
+/// Writes a diagnostics bundle and prints where it went.
+///
+/// A command of its own rather than only an API route, because the fault that
+/// most needs a bundle is the one where the engine did not start and there is
+/// no control page to click.
+int cmdDiagnostics(const std::string& configPath) {
+  // Best effort: a bundle is worth more with the config in it, but a config
+  // that will not parse is itself a thing worth reporting, so a bad file must
+  // not stop the bundle being written.
+  ferret::AppConfig config;
+  std::string error;
+  if (configPath.empty()) {
+    config = ferret::selftestConfig();
+    config.controlPort = 8740;
+  } else if (!ferret::loadConfigFile(configPath, &config, error)) {
+    ferret::diag::warn("--config %s could not be read: %s", configPath.c_str(),
+                       error.c_str());
+  }
+  ferret::diag::setConfig(describeConfig(config));
+
+  const std::string bundle = ferret::diag::collectBundle();
+  std::printf("%s\n", bundle.c_str());
+  std::printf("\nLog       %s\nDirectory %s\n",
+              ferret::diag::logFilePath().c_str(),
+              ferret::diag::logDirectory().c_str());
+  std::printf(
+      "\nConfig values are redacted, but have a look before sending it.\n");
+  return 0;
 }
 
 int cmdRun(const std::string& configPath, const std::string& bindOverride,
@@ -133,7 +215,10 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
   } else {
     std::string error;
     if (!ferret::loadConfigFile(configPath, &config, error)) {
-      std::fprintf(stderr, "%s\n", error.c_str());
+      // Logged, not just printed: this is the whole of a "it will not start"
+      // report when the launcher started it and nobody saw the terminal.
+      ferret::diag::error("--config %s: %s", configPath.c_str(),
+                          error.c_str());
       return 1;
     }
   }
@@ -144,6 +229,10 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
   if (!bindOverride.empty()) config.controlBind = bindOverride;
   if (portOverride > 0) config.controlPort = portOverride;
 
+  // After the overrides, so a crash report and a bundle describe the run that
+  // actually happened rather than the file it started from.
+  ferret::diag::setConfig(describeConfig(config));
+
   ferret::Engine engine;
   std::vector<ferret::NodeFailure> failures, warnings;
   std::vector<ferret::PreviewSink*> previews;
@@ -151,9 +240,11 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
 
   std::string error;
   if (!engine.start(error)) {
-    std::fprintf(stderr, "%s\n", error.c_str());
+    ferret::diag::error("engine did not start: %s", error.c_str());
     return 1;
   }
+  ferret::diag::info("engine running at %s with %zu nodes",
+                     config.rate.label().c_str(), config.nodes.size());
 
   ferret::ControlApi api(engine, config, failures, warnings, previews);
   ferret::HttpServer server;
@@ -163,10 +254,10 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
       // Checked before binding because the usual cause is a second copy of
       // this program already running, and that is worth saying plainly rather
       // than leaving as a bind error.
-      std::fprintf(stderr,
-                   "control port %s:%d is already in use — is Frame Ferret "
-                   "already running?\n",
-                   config.controlBind.c_str(), config.controlPort);
+      ferret::diag::error(
+          "control port %s:%d is already in use — is Frame Ferret already "
+          "running?",
+          config.controlBind.c_str(), config.controlPort);
       engine.stop();
       return 1;
     }
@@ -177,7 +268,7 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
                         api.handle(request, response);
                       },
                       error)) {
-      std::fprintf(stderr, "control server: %s\n", error.c_str());
+      ferret::diag::error("control server: %s", error.c_str());
       engine.stop();
       return 1;
     }
@@ -195,6 +286,14 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
   // sends. Moving these two lines above prepare() reintroduces all of that.
   std::signal(SIGINT, onSignal);
   std::signal(SIGTERM, onSignal);
+
+  // The crash handler goes back in for the same reason, and it is a re-install
+  // rather than the first one: main() already put it up so a crash *during*
+  // node building is still reported. .NET takes SIGSEGV and SIGBUS as well as
+  // the two above — it uses them for its own null checks — so whatever was
+  // registered before buildNodes may no longer be ours. Re-registering costs
+  // nothing and is the difference between a crash report and silence.
+  ferret::diag::installCrashHandler();
   std::printf("Running at %s fps. Ctrl-C to stop.\n",
               config.rate.label().c_str());
 
@@ -211,6 +310,14 @@ int cmdRun(const std::string& configPath, const std::string& bindOverride,
   engine.stop();
 
   const auto counters = engine.counters();
+  // Logged as well, because these four numbers are the first question asked of
+  // any "it went black" report and the terminal they were printed to is long
+  // gone by the time anyone files one.
+  ferret::diag::info("stopped: %llu ticks, %llu frames, %llu black, %llu late",
+                     static_cast<unsigned long long>(counters.ticks),
+                     static_cast<unsigned long long>(counters.framesDelivered),
+                     static_cast<unsigned long long>(counters.blackDelivered),
+                     static_cast<unsigned long long>(counters.lateTicks));
   std::printf("%llu ticks, %llu frames, %llu black, %llu late\n",
               static_cast<unsigned long long>(counters.ticks),
               static_cast<unsigned long long>(counters.framesDelivered),
@@ -398,10 +505,15 @@ int usage() {
       "  interfaces              List NICs available for binding, with speed\n"
       "  kinds                   List node kinds and the directions each takes\n"
       "  screens                 List displays and windows available to capture\n"
+      "  diagnostics [--config <file>]\n"
+      "                          Write a diagnostics bundle and print its path\n"
       "  version                 Print the version\n"
       "\n"
       "`run` with no config serves the built-in colour-bars configuration on\n"
       "http://127.0.0.1:8740/.\n"
+      "\n"
+      "`--collect-diagnostics` is accepted as an alias for `diagnostics`, which\n"
+      "is the spelling the issue form asks for. See docs/diagnostics.md.\n"
       "\n"
       "Only the test pattern and preview nodes exist in this build. Every\n"
       "transport, capture source and hardware output is designed but not\n"
@@ -410,12 +522,13 @@ int usage() {
   return 0;
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-  // Before anything touches CoreGraphics — window capture asserts otherwise.
-  ferret::initialiseWindowServer();
-
+/// Every command, so main() has one place to shut logging down.
+///
+/// Split out rather than left in main() because each command returns from a
+/// dozen places, and a `diag::shutdown()` before each of those returns is a
+/// list somebody will add a thirteenth entry to and not notice — the symptom
+/// being a truncated log for exactly the failure that produced it.
+int dispatch(int argc, char** argv) {
   if (argc < 2) return usage();
 
   const std::string cmd = argv[1];
@@ -454,6 +567,23 @@ int main(int argc, char** argv) {
     }
     return cmdRun(configPath, bind, port);
   }
+  // `--collect-diagnostics` is a flag rather than a command because that is the
+  // spelling the fleet's issue form prints when a repo has no diagnostics doc,
+  // and a reporter who has been told to run it should not have to discover
+  // that this particular binary spells it differently.
+  if (cmd == "diagnostics" || cmd == "--collect-diagnostics") {
+    std::string configPath;
+    for (int i = 2; i < argc; ++i) {
+      const std::string arg = argv[i];
+      if ((arg == "--config" || arg == "-c") && i + 1 < argc) {
+        configPath = argv[++i];
+      } else {
+        std::fprintf(stderr, "unknown option: %s\n", arg.c_str());
+        return 1;
+      }
+    }
+    return cmdDiagnostics(configPath);
+  }
   if (cmd == "version") {
     std::printf("%s\n", FERRET_VERSION);
     return 0;
@@ -463,4 +593,24 @@ int main(int argc, char** argv) {
   std::fprintf(stderr, "unknown command: %s\n", cmd.c_str());
   usage();
   return 1;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  // Before anything touches CoreGraphics — window capture asserts otherwise.
+  ferret::initialiseWindowServer();
+
+  // Logging goes up before anything that can fail, so a fault while nodes are
+  // being built has somewhere to say so. The crash handler is installed here
+  // too and re-installed after buildNodes — see cmdRun for why.
+  ferret::diag::Options diagOptions;
+  diagOptions.appName = "FrameFerret";
+  diagOptions.envPrefix = "FERRET";
+  diagOptions.version = FERRET_VERSION;
+  ferret::diag::init(diagOptions);
+
+  const int status = dispatch(argc, argv);
+  ferret::diag::shutdown();
+  return status;
 }

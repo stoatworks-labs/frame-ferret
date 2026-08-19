@@ -333,6 +333,8 @@ intended behaviour rather than a fault.
 - [docs/02-st2110.md](docs/02-st2110.md) — what full 2110 conformance costs
 - [docs/03-os-extensions.md](docs/03-os-extensions.md) — virtual camera and
   virtual display, per platform
+- [docs/diagnostics.md](docs/diagnostics.md) — the log, the crash report and the
+  bundle to attach to a bug report
 - [AGENTS.md](AGENTS.md) — onboarding for whoever picks this up next
 
 ## Licence

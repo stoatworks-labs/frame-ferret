@@ -37,6 +37,10 @@ class ControlApi {
   void handleInterfaces(HttpServer::Response& response) const;
   void handlePreview(const std::string& id,
                      HttpServer::Response& response) const;
+  void handleDiagnostics(HttpServer::Response& response) const;
+  void handleDiagnosticsBundle(HttpServer::Response& response) const;
+  void handleLog(const HttpServer::Request& request,
+                 HttpServer::Response& response) const;
 
   Engine& engine_;
   AppConfig config_;

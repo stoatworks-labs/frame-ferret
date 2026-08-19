@@ -1,12 +1,37 @@
 #include "control/control_api.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
 #include "control/web_assets.h"
 #include "core/json.h"
+#include "diag/diag.h"
 #include "net/interfaces.h"
 #include "transports/ndi.h"
 #include "transports/st2110.h"
 
 namespace ferret {
+namespace {
+
+/// The level as an API client should see it.
+///
+/// `diag::levelToString` pads to five characters so the log file's level column
+/// lines up, which is right for the log and wrong for JSON — `"INFO "` with a
+/// trailing space is a string nothing downstream compares equal to.
+std::string levelName(diag::Level level) {
+  std::string text = diag::levelToString(level);
+  while (!text.empty() && text.back() == ' ') text.pop_back();
+  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return text;
+}
+
+}  // namespace
 
 ControlApi::ControlApi(Engine& engine, const AppConfig& config,
                        std::vector<NodeFailure> failures,
@@ -38,6 +63,11 @@ void ControlApi::handle(const HttpServer::Request& request,
   if (path == "/api/mute" && request.method == "POST") {
     return handleMute(request, response);
   }
+  if (path == "/api/diagnostics") return handleDiagnostics(response);
+  if (path == "/api/diagnostics/bundle") {
+    return handleDiagnosticsBundle(response);
+  }
+  if (path == "/api/log") return handleLog(request, response);
 
   // /preview/<id>.bmp
   const std::string prefix = "/preview/";
@@ -282,6 +312,54 @@ void ControlApi::handlePreview(const std::string& id,
   response.contentType = "image/bmp";
   // The preview changes every frame, so any caching at all is wrong.
   response.extraHeaders["Cache-Control"] = "no-store";
+}
+
+void ControlApi::handleDiagnostics(HttpServer::Response& response) const {
+  // Deliberately a GET: "open this link and send me the file it names" is one
+  // instruction, and works from a phone.
+  const std::string bundle = diag::collectBundle();
+  auto out = json::Value::object();
+  out.set("bundle", json::Value(bundle));
+  out.set("log", json::Value(diag::logFilePath()));
+  out.set("log_directory", json::Value(diag::logDirectory()));
+  response.json(out.serialize(true));
+}
+
+void ControlApi::handleDiagnosticsBundle(
+    HttpServer::Response& response) const {
+  // The same bundle, but as the file itself rather than a path to it. The path
+  // is no use when the operator is on a laptop and the machine that has the
+  // fault is in a rack two floors down.
+  const std::string bundle = diag::collectBundle();
+  std::ifstream file(bundle, std::ios::binary);
+  if (!file) {
+    response.error(500,
+                   "the diagnostics bundle could not be written to " + bundle);
+    return;
+  }
+  std::ostringstream text;
+  text << file.rdbuf();
+  response.contentType = "application/json";
+  response.body = text.str();
+  response.extraHeaders["Content-Disposition"] =
+      "attachment; filename=\"" +
+      std::filesystem::path(bundle).filename().string() + "\"";
+}
+
+void ControlApi::handleLog(const HttpServer::Request& request,
+                           HttpServer::Response& response) const {
+  const int requested = std::atoi(request.param("lines", "200").c_str());
+  const size_t lines = requested <= 0 ? 200 : static_cast<size_t>(requested);
+
+  auto out = json::Value::object();
+  out.set("level", json::Value(levelName(diag::level())));
+  out.set("path", json::Value(diag::logFilePath()));
+  out.set("directory", json::Value(diag::logDirectory()));
+
+  auto arr = json::Value::array();
+  for (const auto& line : diag::tail(lines)) arr.push(json::Value(line));
+  out.set("lines", std::move(arr));
+  response.json(out.serialize(true));
 }
 
 }  // namespace ferret

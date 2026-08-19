@@ -74,7 +74,7 @@ body:
       description: >
         frame-ferret can bundle its own logs, version info and last crash into a single
         file — that one file usually answers every question we'd otherwise have to ask
-        you one at a time. Look for a Collect Diagnostics button in the app, or run it with --collect-diagnostics.
+        you one at a time. See [docs/diagnostics.md](https://github.com/stoatworks-labs/frame-ferret/blob/main/docs/diagnostics.md) for how to collect one.
         Config values are redacted before the bundle is written, but do have a look
         before attaching it: paste the contents here, or drag the file into this box.
       render: text
