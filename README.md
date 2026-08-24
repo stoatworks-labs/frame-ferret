@@ -244,15 +244,15 @@ shape everything downstream:
 
 ## Download
 
-**[v0.2.0](https://github.com/stoatworks-labs/frame-ferret/releases/tag/v0.2.0)** — prebuilt for macOS, Windows and Linux. Pick your platform:
+**[v0.2.1](https://github.com/stoatworks-labs/frame-ferret/releases/tag/v0.2.1)** — prebuilt for macOS, Windows and Linux. Pick your platform:
 
 <details>
 <summary><b>macOS</b> — Apple Silicon, Universal (Apple Silicon + Intel)</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Apple Silicon · .dmg disk image | [`Frame.Ferret_0.2.0_aarch64.dmg`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/Frame.Ferret_0.2.0_aarch64.dmg) | 3.3 MB |
-| Universal (Apple Silicon + Intel) · .zip archive | [`frame-ferret-0.2.0-macos-universal.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/frame-ferret-0.2.0-macos-universal.zip) | 507 KB |
+| Apple Silicon · .dmg disk image | [`Frame.Ferret_0.2.1_aarch64.dmg`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/Frame.Ferret_0.2.1_aarch64.dmg) | 3.3 MB |
+| Universal (Apple Silicon + Intel) · .zip archive | [`frame-ferret-0.2.1-macos-universal.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/frame-ferret-0.2.1-macos-universal.zip) | 507 KB |
 
 </details>
 
@@ -261,8 +261,8 @@ shape everything downstream:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`Frame.Ferret_0.2.0_x64-setup.exe`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/Frame.Ferret_0.2.0_x64-setup.exe) | 2.2 MB |
-| x64 · .zip archive | [`frame-ferret-0.2.0-windows-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/frame-ferret-0.2.0-windows-x86_64.zip) | 184 KB |
+| x64 · .exe installer | [`Frame.Ferret_0.2.1_x64-setup.exe`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/Frame.Ferret_0.2.1_x64-setup.exe) | 2.2 MB |
+| x64 · .zip archive | [`frame-ferret-0.2.1-windows-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/frame-ferret-0.2.1-windows-x86_64.zip) | 184 KB |
 
 </details>
 
@@ -271,9 +271,9 @@ shape everything downstream:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .deb package (Debian/Ubuntu) | [`Frame.Ferret_0.2.0_amd64.deb`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/Frame.Ferret_0.2.0_amd64.deb) | 4.7 MB |
-| x64 · .rpm package (Fedora/RHEL) | [`Frame.Ferret-0.2.0-1.x86_64.rpm`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/Frame.Ferret-0.2.0-1.x86_64.rpm) | 4.7 MB |
-| x64 · .zip archive | [`frame-ferret-0.2.0-linux-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.0/frame-ferret-0.2.0-linux-x86_64.zip) | 415 KB |
+| x64 · .deb package (Debian/Ubuntu) | [`Frame.Ferret_0.2.1_amd64.deb`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/Frame.Ferret_0.2.1_amd64.deb) | 4.7 MB |
+| x64 · .rpm package (Fedora/RHEL) | [`Frame.Ferret-0.2.1-1.x86_64.rpm`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/Frame.Ferret-0.2.1-1.x86_64.rpm) | 4.7 MB |
+| x64 · .zip archive | [`frame-ferret-0.2.1-linux-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.2.1/frame-ferret-0.2.1-linux-x86_64.zip) | 415 KB |
 
 </details>
 
