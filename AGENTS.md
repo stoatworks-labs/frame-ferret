@@ -317,3 +317,10 @@ Anything decision-shaped goes in `ferret_core`, which has no I/O and no SDK
 dependency, because that is the part a cheap test can reach. WebLinked shipped
 an OSC bug that dropped a quarter of all messages precisely because the decoder
 sat in a target no test could link against.
+
+## Notes
+
+`docs/NOTES.md` carries this repo's working notes — current status, decisions
+already made, and the traps that have actually bitten. Read it before changing
+anything non-obvious. Cross-cutting fleet knowledge lives in
+[fleet-notes](https://github.com/stoatworks-labs/fleet-notes).
