@@ -83,7 +83,7 @@ Honest, and it will stay honest as this grows.
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
-| Tray launcher | **Not started** |
+| Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It is a windowed launcher, not a menu-bar-resident tray app |
 | Windows, Linux | **Built and self-tested by CI**, all three platforms green. Never run interactively, and no hardware path exists on any of them |
 
 ### What has actually been observed
