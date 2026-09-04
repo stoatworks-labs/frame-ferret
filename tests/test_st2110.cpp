@@ -1,9 +1,13 @@
 #include "transports/st2110_rtp.h"
 
 #include <cstring>
+#include <fstream>
+#include <iterator>
+#include <string>
 
 #include "check.h"
 #include "core/convert.h"
+#include "core/rational.h"
 
 using namespace ferret;
 using namespace ferret::st2110;
@@ -337,6 +341,60 @@ void pgroupCarriesRealPixels() {
   CHECK(back[0] < 12);
 }
 
+/// The sender's RTP timestamp must not go through a double.
+///
+/// It used to: `static_cast<uint32_t>((ns / 1000000000.0) * kMediaClockHz)`.
+/// Converting a double whose value has left the uint32_t range is undefined,
+/// and the product passes 4294967295 once ns reaches 47,721.86 s — 13 h 15 m
+/// after the sink was constructed. Clang on arm64 emits a saturating fcvtzu,
+/// so on Apple silicon, the primary platform, every packet after that carried
+/// 0xFFFFFFFF. RFC 4175 receivers delimit frames on the timestamp CHANGING, so
+/// the picture becomes one endless frame. x86-64 happened to wrap correctly,
+/// which only hid it.
+///
+/// rtpTimestamp90k does the arithmetic in int64 and wraps at 2^32, which is
+/// what RTP specifies. It existed already and was never called from the sink.
+void theSenderTimestampWrapsRatherThanSaturating() {
+  // 13 h 15 m in, just past where the double product leaves uint32_t range.
+  const int64_t justPastWrap = 47722LL * 1000000000LL;
+
+  const uint32_t good = ferret::rtpTimestamp90k(justPastWrap);
+  CHECK(good != 0xFFFFFFFFu);
+
+  // A second later must be a DIFFERENT value — that is the whole signal a
+  // receiver uses to know one frame ended and the next began.
+  const uint32_t nextSecond = ferret::rtpTimestamp90k(justPastWrap + 1000000000LL);
+  CHECK(nextSecond != good);
+  CHECK(static_cast<uint32_t>(nextSecond - good) == 90000u);
+
+  // And it keeps ticking a full day in, where the old formula was long since
+  // pinned.
+  const int64_t oneDay = 86400LL * 1000000000LL;
+  const uint32_t dayLater = ferret::rtpTimestamp90k(oneDay);
+  const uint32_t dayLaterPlus = ferret::rtpTimestamp90k(oneDay + 1000000000LL);
+  CHECK(static_cast<uint32_t>(dayLaterPlus - dayLater) == 90000u);
+}
+
+/// The arithmetic above is correct and always was — rtpTimestamp90k has had
+/// wrap coverage in test_rational since it was written. The defect was that
+/// the ST 2110 SINK did not call it, and computed its own timestamp through a
+/// double instead. Nothing observable from outside distinguishes those two
+/// until 13 hours in, so the requirement is pinned where it lives.
+void theSinkUsesTheHelperRatherThanItsOwnFloatingPointCast() {
+  const char* path = FERRET_SOURCE_DIR "/src/transports/st2110.cpp";
+  std::ifstream in(path);
+  CHECK(in.good());
+
+  std::string source((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+  CHECK(!source.empty());
+
+  CHECK(source.find("rtpTimestamp90k(ns)") != std::string::npos);
+  // The old form. Matched as the expression, so a comment may keep explaining
+  // why it is not used.
+  CHECK(source.find("(ns / 1000000000.0) * kMediaClockHz") == std::string::npos);
+}
+
 void run() {
   packetsAreValidRtp();
   aFrameSurvivesAFullRoundTrip();
@@ -348,6 +406,8 @@ void run() {
   sequenceNumbersWrapCleanly();
   theSdpCarriesEveryRequiredParameter();
   pgroupCarriesRealPixels();
+  theSenderTimestampWrapsRatherThanSaturating();
+  theSinkUsesTheHelperRatherThanItsOwnFloatingPointCast();
 }
 
 }  // namespace

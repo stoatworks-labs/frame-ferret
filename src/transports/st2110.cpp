@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/convert.h"
+#include "core/rational.h"
 #include "transports/st2110_rtp.h"
 
 #ifdef _WIN32
@@ -69,6 +70,26 @@ int closeSocket(int fd) {
 #endif
 }
 
+/// Make a socket non-blocking.
+///
+/// Load-bearing for the receive loop, not a tidiness measure. The drain below
+/// calls recv() up to 512 times after poll() says the socket is readable; on a
+/// blocking socket the call after the last waiting datagram parks the thread
+/// until another one arrives. While parked it checks neither `stopping_` nor
+/// the "no packets for 1 s" branch — so a sender that stops leaves the router
+/// serving a frozen picture forever, and Ctrl-C hangs in the destructor's
+/// join() waiting on a thread that is inside recv().
+bool setNonBlocking(int fd) {
+#ifdef _WIN32
+  u_long mode = 1;
+  return ::ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &mode) == 0;
+#else
+  const int flags = ::fcntl(fd, F_GETFL, 0);
+  if (flags < 0) return false;
+  return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+#endif
+}
+
 /// A UDP socket set up to receive a multicast group on a chosen interface.
 int openReceiveSocket(const std::string& group, int port,
                       const NetInterface& nic, std::string& error) {
@@ -99,6 +120,12 @@ int openReceiveSocket(const std::string& group, int port,
   local.sin_addr.s_addr = INADDR_ANY;
   if (::bind(fd, reinterpret_cast<sockaddr*>(&local), sizeof(local)) != 0) {
     error = "could not bind UDP port " + std::to_string(port);
+    closeSocket(fd);
+    return -1;
+  }
+
+  if (!setNonBlocking(fd)) {
+    error = "could not put the receive socket into non-blocking mode";
     closeSocket(fd);
     return -1;
   }
@@ -241,7 +268,13 @@ class St2110Source final : public Source {
 
       // Drain what is waiting rather than one datagram per poll — at this
       // packet rate the poll alone would be most of the cost.
-      for (int i = 0; i < 512; ++i) {
+      //
+      // The socket is non-blocking (see setNonBlocking), so the recv after the
+      // last queued datagram returns immediately with EWOULDBLOCK instead of
+      // parking the thread until the next packet arrives. That is what lets
+      // the loop get back to the poll timeout, where `stopping_` and the
+      // one-second silence check live.
+      for (int i = 0; i < 512 && !stopping_.load(); ++i) {
         const auto n = ::recv(fd_, reinterpret_cast<char*>(datagram.data()),
                                  datagram.size(), 0);
         if (n <= 0) break;
@@ -327,8 +360,17 @@ class St2110Sink final : public Sink {
     const int64_t ns =
         std::chrono::duration_cast<std::chrono::nanoseconds>(now - epoch_)
             .count();
-    const uint32_t timestamp =
-        static_cast<uint32_t>((ns / 1000000000.0) * kMediaClockHz);
+    // rtpTimestamp90k, not a double. `static_cast<uint32_t>` from a double whose
+    // value has left the uint32_t range is undefined, and the product passes
+    // 4294967295 once ns reaches 47,721.86 s — 13 h 15 m after this sink was
+    // constructed. Clang on arm64 emits a saturating fcvtzu, so on Apple
+    // silicon every packet after that carried 0xFFFFFFFF: RFC 4175 receivers
+    // delimit frames on the timestamp CHANGING, so the picture becomes one
+    // endless frame. (x86-64 happened to wrap correctly, which is worse — it
+    // means the fault only appears on the primary platform.) The helper does
+    // the same arithmetic in int64 and wraps at 2^32, which is what RTP
+    // specifies; it existed already and was simply never called from here.
+    const uint32_t timestamp = rtpTimestamp90k(ns);
 
     packetiser_.packetise(
         frame.data, frame.strideBytes, timestamp,

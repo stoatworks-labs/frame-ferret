@@ -187,5 +187,10 @@ enable_testing()
 foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt st2110)
   add_executable(test_${t} tests/test_${t}.cpp)
   target_link_libraries(test_${t} PRIVATE ferret_core)
+  # So a test can assert on the source of a transport it cannot otherwise
+  # reach — see test_st2110's timestamp guard, where the difference between
+  # right and wrong is which function the sink calls and does not show up in
+  # observable behaviour until 13 hours in.
+  target_compile_definitions(test_${t} PRIVATE FERRET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME ${t} COMMAND test_${t})
 endforeach()
