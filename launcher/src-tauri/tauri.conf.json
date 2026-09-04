@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Frame Ferret",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.allansargeant.frame-ferret",
   "build": {
     "frontendDist": "../src"
