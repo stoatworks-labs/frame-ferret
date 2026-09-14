@@ -1,5 +1,5 @@
 # Tag v* → build macOS (universal), Windows x64 and Linux x64, zip each with the
-# licence, README and example configs, and attach to a draft GitHub release.
+# licence, README and example configs, and attach to a GitHub release.
 #
 # Modelled on oxbow's, which is the closest analogue in the fleet: a console app
 # with a web control page, so a zip is the right shape until it grows a tray
@@ -165,12 +165,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      # Draft, deliberately: the fleet's local auto-signer re-signs and
-      # re-uploads the macOS artefact after the release appears, and the
-      # download links are generated from the assets that end up published.
+      # Published, not drafted. This used to say `draft: true` on the theory that
+      # the fleet's auto-signer would re-sign the macOS artefact "after the
+      # release appears" -- but auto-sign-watch.sh reads each repo's *latest
+      # published* release, so a draft never appears to it at all. The
+      # 2026-09-04 tag sat as an unsigned, unpublished draft for ten days
+      # because of this; v0.2.2 was published by hand on 2026-09-14.
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          generate_release_notes: true
           # Recursive globs, not root-level ones. upload-artifact keeps the
           # directory structure below the common root, so the launcher's
           # bundles arrive as dmg/*.dmg, nsis/*.exe and so on — `*.dmg` at the
