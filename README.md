@@ -1,15 +1,16 @@
 # Frame Ferret
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
-> (Anthropic), directed and reviewed by a human author. **NDI and OMT both work
-> in both directions**, verified against oxbow and against macOS's own `dns-sd`
-> — separate implementations, not this code. SRT's transport layer is built and
-> proven over a loopback connection, but SRT carries *compressed* MPEG-TS, and
-> the encoder and decoder that would let it carry frames **do not exist yet**,
-> so there is no SRT node. 11 test binaries, 535 checks, all passing. ST 2110,
-> screen capture, the UVC camera, DeckLink and Syphon/Spout are designed and
-> documented but not implemented, and no hardware output exists on any
-> platform. See [Status](#status).
+> (Anthropic), directed and reviewed by a human author. Every transport is
+> checked against an implementation that is not this code: **NDI and OMT** in
+> both directions against oxbow and macOS's own `dns-sd`, **SRT** receive and
+> send against an independent Rust sender and independent decoders,
+> **ST 2110-20** both ways against GStreamer's RFC 4175 implementation, and
+> **Syphon** against Resolume's own client. **DeckLink output has run on a real
+> Duo 2** with no late or dropped frames by the card's own count, though the
+> picture on the wire has not been read back. The UVC virtual camera, virtual
+> display, Spout, DeckLink capture, HTML output and 2110 audio and ancillary
+> are not written. See [Status](#status).
 
 [![Frame Ferret](docs/video-thumb.png)](https://www.youtube.com/watch?v=7jppEKgBDLk)
 
