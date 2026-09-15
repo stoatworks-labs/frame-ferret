@@ -5,6 +5,10 @@ ST 2110 endpoint — transmitting and receiving — over a chosen network interf
 this machine's screen, and that presents itself to other software as a camera, a shared GPU
 surface, an SDI output or a web overlay.
 
+![Frame Ferret's control page: the crosspoint with colour bars routed to the NDI, ST 2110-20 and preview outputs and the main display to Syphon, the preview, and the frame counters](thumb.png)
+
+*The control page at 50 fps: colour bars routed to the NDI, ST 2110-20 and preview outputs and the main display to Syphon — the ST 2110 row converting to 4:2:2 10-bit on the way — with the preview and the tick, frame and conversion counters underneath.*
+
 **The idea is that a protocol is just a port on a router.** Anything can be a source, anything can
 be a sink, and the crosspoint in the middle does not care which is which.
 
