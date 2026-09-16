@@ -1,17 +1,18 @@
-# Atem Overseer — desktop app
+# Frame Ferret — desktop app
 
-A small menu-bar desktop app for Atem Overseer: pick a network interface + port,
-Start/Stop the server, open the dashboard, and run it from the system tray.
-Built with [Tauri v2](https://tauri.app) using the fleet's reusable
+A small desktop app for Frame Ferret: pick a network interface + port, Start/Stop
+the engine, open the control page in your browser, and leave it running in the
+system tray. Built with [Tauri v2](https://tauri.app) using the fleet's reusable
 [av-launcher](https://github.com/stoatworks-labs/av-launcher) shell.
 
 Download an installer from
-[Releases](https://github.com/stoatworks-labs/atem-overseer/releases).
+[Releases](https://github.com/stoatworks-labs/frame-ferret/releases):
+macOS `.dmg`, Windows `-setup.exe`, Linux `.deb` + `.rpm`.
 
-> **Fully self-contained.** Because Atem Overseer is a Node app, this bundle
-> embeds a Node runtime **and** the whole app (server + built dashboard).
-> Nothing needs to be installed — no Node, no separate checkout. Just download
-> and run.
+> **Fully self-contained.** Frame Ferret is a single native binary, so the bundle
+> embeds just that — no runtime, no separate checkout. Every transport is loaded
+> at run time rather than linked, so the bundled binary starts on a machine with
+> none of them installed and reports each as unavailable.
 
 > **Unsigned builds.** By default the installers are unsigned. On macOS,
 > right-click the app → **Open** → **Open** once; on Windows, "More info" →
@@ -19,10 +20,12 @@ Download an installer from
 
 ## What it does
 
-- Lists bindable network interfaces + a port field (defaults to 4700).
-- **Start/Stop** the embedded Overseer server.
-- **Open** the dashboard in your browser.
-- Lives in the system tray; the panel themes itself to Atem Overseer's palette
+- Lists bindable network interfaces + a port field (defaults to 8740).
+- **Start/Stop** the embedded `frame-ferret` binary (`run --bind <host> --port
+  <port>` — plain argument injection; with no `--config` it serves its built-in
+  colour-bars configuration, so something is on screen immediately).
+- **Open** the control page in your browser.
+- Lives in the system tray; the panel themes itself to Frame Ferret's palette
   (carried in `src-tauri/launcher.toml`).
 
 ## Build
@@ -30,13 +33,19 @@ Download an installer from
 ```bash
 cd launcher
 npm ci
-bash scripts/prepare.sh        # build app + embed Node runtime for this platform
+bash scripts/prepare.sh        # cmake-build frame-ferret and stage it as src-tauri/bin/
 npm run tauri build            # produces installers under src-tauri/target/release/bundle
 ```
 
-To stage a Node runtime for a different platform, set `NODE_PLATFORM`
-(e.g. `NODE_PLATFORM=win-x64 bash scripts/prepare.sh`).
+The staged binary (`src-tauri/bin/frame-ferret[.exe]`) is produced by
+`prepare.sh` and git-ignored; it ships inside the bundle.
 
-The embedded runtime (`src-tauri/node[.exe]`) and app tree
-(`src-tauri/atem-overseer-app/`) are produced by `prepare.sh` and git-ignored;
-they ship inside the bundle.
+## The shell
+
+The panel/tray shell (`src/`, `src-tauri/src/`, `src-tauri/crates/`,
+`Cargo.lock`) is a file-for-file copy of
+[av-launcher](https://github.com/stoatworks-labs/av-launcher) at `2c83ad7`;
+only `src-tauri/launcher.toml` (config + theme), `tauri.conf.json`,
+`entitlements.plist`, the icons and `scripts/prepare.sh` are app-specific.
+Refresh the shell by copying those files from a newer av-launcher checkout,
+not by editing them here.
