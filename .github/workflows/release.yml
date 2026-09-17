@@ -20,6 +20,9 @@ on:
   push:
     tags:
       - "v*"
+  # A dispatch from a branch is a dry run: everything builds and the artefacts
+  # stay on the workflow run; the release job only runs for a tag.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -81,7 +84,8 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${GITHUB_REF_NAME#v}"
+          case "$VERSION" in [0-9]*) ;; *) VERSION="0.0.0-dev.${GITHUB_RUN_NUMBER}" ;; esac
           STAGE="frame-ferret-$VERSION-${{ matrix.name }}"
           mkdir "$STAGE"
           if [[ -f build/Release/frame-ferret.exe ]]; then
@@ -108,6 +112,15 @@ jobs:
   # most people actually want — a .app they can double-click, not a folder with
   # a terminal program in it. The zips above stay, because a CLI is still the
   # right shape for a headless machine.
+  #
+  # macOS is one universal build: prepare.sh compiles the engine for both
+  # architectures (CMAKE_OSX_ARCHITECTURES, the same flag the build job uses),
+  # Tauri builds both slices of the launcher and lipos them, and the gate below
+  # reads every Mach-O in the bundle. It leaves here ad-hoc signed; the
+  # Developer ID signature and notarisation are applied post-hoc by the
+  # watcher on the author's Mac, like every other CI-built macOS asset in the
+  # fleet. universal-apple-darwin is a Tauri bundling target and not a rustup
+  # one, so `rust_targets` carries the two real triples.
   launcher:
     name: launcher-${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -115,15 +128,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            name: macos
-          - os: windows-latest
-            name: windows
-          - os: ubuntu-latest
-            name: linux
+          - { os: macos-14,       name: macos,   target: universal-apple-darwin,   rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin' }
+          - { os: windows-latest, name: windows, target: x86_64-pc-windows-msvc,   rust_targets: x86_64-pc-windows-msvc }
+          - { os: ubuntu-latest,  name: linux,   target: x86_64-unknown-linux-gnu, rust_targets: x86_64-unknown-linux-gnu }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -141,18 +153,80 @@ jobs:
 
       - name: Build the app
         working-directory: launcher
+        shell: bash
+        # --bundles app on macOS: the .dmg and .pkg come from the fleet's
+        # release helper below, from the same staged bundle. Windows and Linux
+        # take the bundles tauri.conf.json lists (nsis; deb + rpm).
         run: |
           npm ci
-          npm run tauri build
+          if [[ "${{ matrix.name }}" == macos ]]; then
+            npx --no-install tauri build --target ${{ matrix.target }} --bundles app
+          else
+            npm run tauri build
+          fi
+
+      # Proof that "universal" is universal, for EVERY Mach-O in the bundle: a
+      # fat launcher around a thin engine launches on an Intel Mac and dies the
+      # moment it starts the engine. Captured and matched with `case`, never
+      # piped into grep — steps run as `bash -eo pipefail`, so a grep that exits
+      # on its first match SIGPIPEs lipo and fails the step BECAUSE it matched.
+      - name: Verify the macOS launcher is universal
+        if: matrix.name == 'macos'
+        shell: bash
+        run: |
+          appdir="launcher/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          app="Frame Ferret.app"
+          [ -d "$appdir/$app" ] || { echo "no .app produced" >&2; exit 1; }
+          found=0
+          while IFS= read -r f; do
+            __archs="$( lipo -archs "$f" 2>/dev/null )" || continue
+            [ -n "$__archs" ] || continue
+            found=$((found+1))
+            echo "${f#$appdir/$app/}: $__archs"
+            case "$__archs" in
+              *arm64*x86_64*|*x86_64*arm64*) ;;
+              *) echo "expected both slices in $f, got: $__archs" >&2; exit 1 ;;
+            esac
+          done < <(find "$appdir/$app" -type f -perm -u+x)
+          # A find that matched nothing would pass every check above in silence.
+          if [ "$found" -lt 2 ]; then
+            echo "expected at least the app binary and the embedded engine, found $found" >&2
+            exit 1
+          fi
+
+      - name: Installers (macOS)
+        if: matrix.name == 'macos'
+        shell: bash
+        # Tauri has no pkg bundler and its dmg step drives Finder, which fails
+        # headless, so both come from the fleet's release helper. Ad-hoc signed
+        # here: an unsigned bundle is refused as "damaged".
+        run: |
+          source scripts/release-lib.sh
+          version="${GITHUB_REF_NAME#v}"
+          case "$version" in [0-9]*) ;; *) version="0.0.0-dev.${GITHUB_RUN_NUMBER}" ;; esac
+          rl_init "Frame Ferret" frame-ferret "$version" com.stoatworks.frame-ferret "$GITHUB_WORKSPACE/out"
+          appdir="launcher/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          app="Frame Ferret.app"
+          stage="$RUNNER_TEMP/stage-launcher"
+          rm -rf "$stage"; mkdir -p "$stage" "$GITHUB_WORKSPACE/out"
+          cp -R "$appdir/$app" "$stage/"
+          rl_adhoc_sign "$stage/$app"
+          rl_dmg macos-universal "$stage" --app "$app"
+          rl_pkg macos-universal "$stage" --app "$app"
+
+      - name: Collect launcher bundles
+        shell: bash
+        run: |
+          mkdir -p out
+          find launcher/src-tauri/target -type f \
+            \( -name '*.exe' -o -name '*.deb' -o -name '*.rpm' \) \
+            -path '*/release/bundle/*' -exec cp {} out/ \; 2>/dev/null || true
+          ls -l out
 
       - uses: actions/upload-artifact@v4
         with:
           name: frame-ferret-launcher-${{ matrix.name }}
-          path: |
-            launcher/src-tauri/target/release/bundle/dmg/*.dmg
-            launcher/src-tauri/target/release/bundle/nsis/*.exe
-            launcher/src-tauri/target/release/bundle/deb/*.deb
-            launcher/src-tauri/target/release/bundle/rpm/*.rpm
+          path: out/*
           if-no-files-found: error
 
   release:
@@ -183,6 +257,7 @@ jobs:
           files: |
             frame-ferret-*.zip
             **/*.dmg
+            **/*.pkg
             **/*.exe
             **/*.deb
             **/*.rpm

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Sign the embedded Node binary before Tauri bundles the .app, so every nested
-# Mach-O in the bundle is Developer-ID-signed with the hardened runtime and the
-# whole app passes notarization. No-op when no signing identity is configured
-# (the build then produces an unsigned .dmg, as before).
+# Sign the embedded frame-ferret engine before Tauri bundles the .app, so every
+# nested Mach-O in the bundle is Developer-ID-signed with the hardened runtime
+# and the whole app passes notarization. Only for a copy you sign yourself:
+# released builds are signed and notarised post-hoc (see ../SIGNING.md). No-op
+# when no signing identity is configured.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)" # launcher/
-NODE_BIN="$HERE/src-tauri/node"
+NODE_BIN="$HERE/src-tauri/bin/frame-ferret"
 ENTITLEMENTS="$HERE/src-tauri/entitlements.plist"
 IDENTITY="${APPLE_SIGNING_IDENTITY:-}"
 
