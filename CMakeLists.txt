@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(frame-ferret VERSION 0.2.3 LANGUAGES C CXX)
+project(frame-ferret VERSION 0.2.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
