@@ -44,7 +44,7 @@ The staged binary (`src-tauri/bin/frame-ferret[.exe]`) is produced by
 
 The panel/tray shell (`src/`, `src-tauri/src/`, `src-tauri/crates/`,
 `Cargo.lock`) is a file-for-file copy of
-[av-launcher](https://github.com/stoatworks-labs/av-launcher) at `2c83ad7`;
+[av-launcher](https://github.com/stoatworks-labs/av-launcher) at `21bc307`;
 only `src-tauri/launcher.toml` (config + theme), `tauri.conf.json`,
 `entitlements.plist`, the icons and `scripts/prepare.sh` are app-specific.
 Refresh the shell by copying those files from a newer av-launcher checkout,
