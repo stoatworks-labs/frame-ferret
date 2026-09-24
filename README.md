@@ -339,6 +339,10 @@ intended behaviour rather than a fault.
   bundle to attach to a bug report
 - [AGENTS.md](AGENTS.md) — onboarding for whoever picks this up next
 
+<!-- attributions:start -->
+This project is built on other people's work — see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
+<!-- attributions:end -->
+
 ## Licence
 
 MIT.
