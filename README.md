@@ -78,7 +78,7 @@ grows.
 | Virtual display | **Not started.** No public macOS API exists — see the same document |
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
-| Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It is a windowed launcher, not a menu-bar-resident tray app |
+| Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It's a window plus a tray icon (in the menu bar on a Mac): closing the window hides it to the tray and leaves the engine running |
 | Windows, Linux | **Built and self-tested by CI**, all three platforms green. Never run interactively, and no hardware path exists on any of them |
 
 ### What has actually been observed
@@ -164,9 +164,9 @@ frames, 0 late, 0 dropped** over ~50 seconds, with the engine holding 49.98 fps.
 verified is the picture on the wire: that needs an SDI cable looping an output back to an input,
 and there wasn't one to hand.
 
-Getting there meant making the conversion three times faster. BGRA to v210 at 1080p cost 26.6 ms
-(a 38 fps ceiling), so the card ran at 34 fps with a third of its ticks late. Folding the colour
-coefficients and then fusing RGB to v210 past the shared intermediate took it to **12.7 ms**.
+Getting there meant making the conversion just over twice as fast. BGRA to v210 at 1080p cost
+26.6 ms (a 38 fps ceiling), so the card ran at 34 fps with a third of its ticks late. Folding the
+colour coefficients and then fusing RGB to v210 past the shared intermediate took it to **12.7 ms**.
 
 **Audio now follows the same crosspoint as video.** The test pattern sends a 1 kHz tone at
 -20 dBFS alongside the bars, and it travels the routes the video does. Across NDI: 4478 audio

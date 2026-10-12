@@ -19,8 +19,8 @@ sink, and the crosspoint in the middle doesn't care which is which.
 > pixels on the wire haven't been checked.
 >
 > **Not started:** the UVC virtual camera, the virtual display, DeckLink capture, Spout, HTML
-> output, the tray launcher, and ST 2110 audio and ancillary. Windows and Linux build and self-test
-> in CI but **have never been run interactively, and no hardware path exists on either.**
+> output, and ST 2110 audio and ancillary. Windows and Linux build and self-test in CI but **have
+> never been run interactively, and no hardware path exists on either.**
 >
 > This codebase was created with AI assistance, directed and reviewed by a human author.
 
@@ -71,6 +71,7 @@ fault, and that's an expensive hour. Every node takes an interface.
 | **DeckLink output** | Run on a real Duo 2 at 1080p50 in v210. |
 | **Screen, window, application and region capture** (macOS) | Built and run. A region of interest is a source rect, so a crop costs nothing. |
 | **Syphon output** (macOS) | Verified against Resolume's Syphon — a different implementation from the one vendored here. |
+| **Desktop launcher** | Shipped since v0.1.1. Pick an interface and a port, press Start, and it opens the control page. Closing its window hides it to the tray (the menu bar on a Mac) and leaves the engine running. |
 
 ---
 
@@ -111,8 +112,7 @@ Hardware encoders are used where there are any.
 
 Designed and documented, but not implemented: the UVC virtual camera (it needs an embedded
 provisioning profile the release harness doesn't produce yet), the virtual display (no public macOS
-API exists), DeckLink capture, Spout, HTML output, the tray launcher, and ST 2110-30 audio and -40
-ancillary.
+API exists), DeckLink capture, Spout, HTML output, and ST 2110-30 audio and -40 ancillary.
 
 They're left out of the UI rather than sitting there failing.
 

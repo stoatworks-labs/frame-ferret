@@ -131,8 +131,8 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   applied rather than silently ignored.
 
 **Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
-Spout, the HTML output, the OS extensions, and the tray launcher. Do not
-describe any of it as working.
+Spout, the HTML output and the OS extensions. Do not describe any of it as
+working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
