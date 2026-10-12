@@ -64,12 +64,13 @@ src/
   core/      frame, pixel formats, exact rational rates, JSON, dylib loading
   net/       interface enumeration and binding
   app/       node model, router, CLI
-  sources/   capture: display, window, application, ROI, Syphon/Spout client
+  sources/   test pattern; capture: display, window, application, ROI
+             (Syphon/Spout client not written yet)
   transports/ ndi, omt, srt, st2110 — each implements both Source and Sink
-  sinks/     uvc, Syphon/Spout server, decklink, html
-  control/   HTTP server, web UI, OSC
+  sinks/     preview, Syphon server, decklink (uvc, Spout and html not written yet)
+  control/   HTTP server, web UI (OSC not written yet)
   diag/      vendored fleet diagnostics — see docs/diagnostics.md
-extensions/  the OS extensions — see docs/03-os-extensions.md
+extensions/  the OS extensions, not started — see docs/03-os-extensions.md
 ```
 
 `ferret_core` is a separate static library holding everything with no I/O, no

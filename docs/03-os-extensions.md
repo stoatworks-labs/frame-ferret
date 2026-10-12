@@ -151,14 +151,14 @@ a virtual display for — "give me a surface to drag an application onto and the
 capture it" — is served on macOS by **ScreenCaptureKit** capturing a specific
 window or application directly, with no virtual display involved. That is
 `NodeKind::windowCapture` and `applicationCapture`, both already in the node
-model, both public API, and both far cheaper. Build those first and see how
-much of the virtual display's purpose is left over.
+model, both public API, and both far cheaper. Both are built now (cd948fd), so
+the next step is seeing how much of the virtual display's purpose is left over.
 
 ## Sequencing
 
 1. Windows virtual camera (MFVirtualCamera) — cheapest, validates the sink path
 2. macOS window/application capture via ScreenCaptureKit — public API, and may
-   absorb much of the virtual display requirement
+   absorb much of the virtual display requirement. Done (cd948fd)
 3. **Teach `release-lib.sh` to embed a provisioning profile.** This is the real
    macOS prerequisite, and it is fleet infrastructure work rather than Frame
    Ferret work — nothing else in the fleet needs it yet, but nothing else in

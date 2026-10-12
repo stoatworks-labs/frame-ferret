@@ -13,16 +13,16 @@ it is the whole mental model.
 This section is the most important one in the file. Keep it honest, and never
 upgrade "compiles" to "works".
 
-**Built, tested and run on this machine** — 535 checks across 11 binaries:
+**Built, tested and run on this machine** — 769 checks across 12 binaries (run 2026-10-12):
 
 - The crosspoint `Router` and its plan-every-sink invariant — 36 checks.
 - Exact rational rates, tick deadlines and the drift property — 40 checks,
   including a pin on the specific unsigned-promotion bug that cost oxbow a day.
 - The pixel format model, strides and packing-group rounding — 33 checks.
-- Pixel conversion between BGRA/RGBA/UYVY/YUY2/v210 — 103 checks, including a
+- Pixel conversion between BGRA/RGBA/UYVY/YUY2/v210 — 113 checks, including a
   75% colour-bar round trip verified by pixel readback (within 2 code values),
   an explicit channel-swap check, and legal-black behaviour.
-- The `Engine` frame loop — 37 checks, driven through a real running engine
+- The `Engine` frame loop — 95 checks, driven through a real running engine
   rather than through `Router::plan()` alone.
 - Config parsing and its rejections — 57 checks.
 - Interface enumeration and selector resolution — 81 checks (count is
@@ -45,7 +45,7 @@ upgrade "compiles" to "works".
   receives at `omt://127.0.0.1:6400` and decodes all eight bars within 2 code
   values. Receiving is a round trip at 50 fps.
 - **SRT's transport layer**, proven by a real loopback listener/caller pair
-  carrying bytes. **There is no SRT node** — see below.
+  carrying bytes. The SRT node built on it is below.
 
 **SRT receive is verified end to end**, against `tools/srtsend` — ~50 lines on
 **srt-tokio**, the pure-Rust SRT stack srt-router uses, and a completely
@@ -100,7 +100,7 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   claim without hardware transmit pacing and a real PTP servo.
 
 - **Audio routed through the crosspoint**, with a 1 kHz tone in the test
-  pattern to drive it. 63 checks on the engine now. Verified across NDI as a
+  pattern to drive it. 63 checks on the engine at the time. Verified across NDI as a
   Frame Ferret round trip through libndi — **not** against an independent
   receiver, because oxbow's probe has no audio support at all. Do not claim
   more than that.

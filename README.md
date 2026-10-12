@@ -57,8 +57,8 @@ grows.
 | Node model, crosspoint router | **Built and tested.** 36 checks |
 | Exact rational rates and tick deadlines | **Built and tested.** 40 checks |
 | Pixel format model | **Built and tested.** 33 checks |
-| Pixel conversion (BGRA/RGBA/UYVY/YUY2/v210) | **Built and tested.** 103 checks, including a colour-bar round trip verified by pixel readback |
-| Frame loop / engine | **Built, tested and run.** 37 checks; 9049 ticks at 50 fps with zero late |
+| Pixel conversion (BGRA/RGBA/UYVY/YUY2/v210) | **Built and tested.** 113 checks, including a colour-bar round trip verified by pixel readback |
+| Frame loop / engine | **Built, tested and run.** 95 checks; 9049 ticks at 50 fps with zero late |
 | Config loading | **Built and tested.** 57 checks |
 | Interface enumeration and binding | **Built and runs.** 81 checks, verified against this machine's real NICs. The count varies by machine — the suite walks whatever it finds |
 | Test-pattern source, preview sink | **Built and run** |
@@ -66,7 +66,7 @@ grows.
 | CLI (`run`, `selftest`, `interfaces`, `kinds`) | **Runs** |
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
-| **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. **No SRT node yet:** it needs an encoder |
+| **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. The SRT node built on it is in the next two rows |
 | **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly |
 | **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools |
 | **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
@@ -205,7 +205,7 @@ and nothing since has changed it.
 Two constraints turned up while scoping, and both are written up in full because they shape
 everything downstream:
 
-- **ST 2110-20 will be a wide-profile sender.** Narrow profile needs hardware transmit pacing, and
+- **ST 2110-20 is a wide-profile sender.** Narrow profile needs hardware transmit pacing, and
   macOS also has no supported hardware timestamping path for PTP. Wide is in spec and widely
   accepted, but it isn't the same claim. [docs/02-st2110.md](docs/02-st2110.md)
 - **macOS has no public virtual display API.** The only route is private CoreGraphics classes.

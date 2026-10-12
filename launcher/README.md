@@ -14,9 +14,9 @@ macOS `.dmg`, Windows `-setup.exe`, Linux `.deb` + `.rpm`.
 > at run time rather than linked, so the bundled binary starts on a machine with
 > none of them installed and reports each as unavailable.
 
-> **Unsigned builds.** By default the installers are unsigned. On macOS,
-> right-click the app → **Open** → **Open** once; on Windows, "More info" →
-> "Run anyway". See [SIGNING.md](SIGNING.md) to produce signed macOS builds.
+> **Signing.** Released macOS builds are signed and notarised, so they open
+> normally. The Windows installer is unsigned: "More info" → "Run anyway". A copy
+> you build yourself is unsigned on macOS too; [SIGNING.md](SIGNING.md) covers it.
 
 ## What it does
 

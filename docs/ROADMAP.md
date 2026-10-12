@@ -1,7 +1,6 @@
 # Roadmap
 
-Ordered by what unblocks the most, not by what is most interesting. Nothing
-past phase 0 exists.
+Ordered by what unblocks the most, not by what is most interesting.
 
 ## Phase 0 — the spine ✅ done
 
@@ -37,17 +36,21 @@ Two things this phase settled, both of which were assumptions in the plan:
 - **Audio is plumbed but unproven.** `AudioFrame` crosses the receiver and the
   sender, but nothing has yet carried audio end to end, and the router does not
   route it separately from video. Do not claim NDI audio works.
+  Since then (85cdcbf) audio follows the video routes through the crosspoint
+  and has crossed NDI between two Frame Ferrets, 287 frames back through
+  libndi. Both ends are this codebase, so it still isn't independently
+  verified.
 
 Still to do here: a ten-minute soak, and audio actually verified.
 
 ## Phase 2 — the rest of the transports
 
 - **OMT ✅ done.** Both directions, verified against oxbow and macOS `dns-sd`.
-- **SRT — transport layer ✅ done, codec layer not started.** `srt_socket.*`
+- **SRT ✅ done**, transport layer first and then the codec layer. `srt_socket.*`
   does caller/listener, real interface binding, latency, passphrase and stream
-  id, and is proven over loopback. What is missing is that **SRT carries
+  id, and is proven over loopback. What was missing was that **SRT carries
   compressed MPEG-TS, not frames**: a source must demux and decode, a sink must
-  encode and mux. Until that exists there is deliberately no SRT node.
+  encode and mux. Until that existed there was deliberately no SRT node.
 
   Sequenced the same way as 2110, and for the same reason — receiving is far
   more forgiving than sending:
@@ -70,24 +73,25 @@ Still to do here: a ten-minute soak, and audio actually verified.
   code values through H.264.
 
 - **DeckLink out ✅ written**, optional behind `-DDECKLINK_SDK_DIR`. Lifted from
-  oxbow's Duo 2-verified sequence, prefers v210. **Never run against a card
-  from this codebase** — none was attached.
+  oxbow's Duo 2-verified sequence, prefers v210. Since run on a real Duo 2
+  (1e181f4): 1080p50 in v210, 2531 frames with 0 late and 0 dropped by the
+  card's own count. The pixels on the wire are still unchecked.
 - **Syphon out ✅ done and verified** against Resolume's Syphon 5, from a
   process started afterwards.
 - DeckLink capture; Spout out (Windows)
 
 ## Phase 3 — capture sources
 
-- Display and region-of-interest capture via ScreenCaptureKit
-- Window and application capture — **do these before the virtual display**, as
-  they may absorb most of what it is wanted for
+- Display and region-of-interest capture via ScreenCaptureKit ✅ done
+- Window and application capture ✅ done — **do these before the virtual
+  display**, as they may absorb most of what it is wanted for
 - Syphon / Spout client input
 
 ## Phase 4 — control
 
-- HTTP control server and the embedded crosspoint page, WebLinked's model
+- HTTP control server and the embedded crosspoint page, WebLinked's model ✅ done
 - OSC, with the padding bug from WebLinked already covered by a test
-- The av-launcher tray shell and `launcher.toml`
+- The av-launcher tray shell and `launcher.toml` ✅ done, shipped in v0.1.1
 
 ## Phase 5 — ST 2110  (video done)
 
