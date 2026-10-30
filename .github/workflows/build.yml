@@ -12,9 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macos-14 is arm64. The Intel macOS runners were retired, so never
+          # macos-15 is arm64. The Intel macOS runners were retired, so never
           # add macos-13 back expecting it to work.
-          - os: macos-14
+          - os: macos-15
             name: macOS
           - os: ubuntu-latest
             name: Linux

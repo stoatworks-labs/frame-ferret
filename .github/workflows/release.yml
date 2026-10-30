@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             name: macos-universal
           - os: windows-latest
             name: windows-x86_64
@@ -128,7 +128,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,       name: macos,   target: universal-apple-darwin,   rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin' }
+          - { os: macos-15,       name: macos,   target: universal-apple-darwin,   rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin' }
           - { os: windows-latest, name: windows, target: x86_64-pc-windows-msvc,   rust_targets: x86_64-pc-windows-msvc }
           - { os: ubuntu-latest,  name: linux,   target: x86_64-unknown-linux-gnu, rust_targets: x86_64-unknown-linux-gnu }
     steps:
