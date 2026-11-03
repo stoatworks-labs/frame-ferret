@@ -12,6 +12,8 @@ ST 2110 endpoint**, sending and receiving, on whichever network interface you ch
 capture this machine's screen, and it shows up to other software as a camera, a shared GPU
 surface, an SDI output or a web overlay.
 
+The [project page](https://stoatworks-labs.com/software/frame-ferret/) has the downloads, the [user guide](https://stoatworks-labs.com/software/frame-ferret/guide/) and the video.
+
 The idea is that a protocol is just a port on a router. Anything can be a source, anything can be
 a sink, and the crosspoint in the middle doesn't care which is which.
 
