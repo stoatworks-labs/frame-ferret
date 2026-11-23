@@ -120,7 +120,9 @@ release harness has never produced.
 3. macOS virtual camera (CMIOExtension)
 4. Windows virtual display (IddCx), if attestation signing is worth opening
 5. macOS virtual display — private API, off by default, experimental, and only
-   if phase 3 leaves a real gap
+   if phase 3 leaves a real gap. **Built 2026-11-23**, ahead of the rest of this
+   phase: software that only outputs to a display (Resolume's Advanced Output)
+   was the gap. See 03-os-extensions.md
 
 ## Unresolved, and needing a decision before the installer is designed
 

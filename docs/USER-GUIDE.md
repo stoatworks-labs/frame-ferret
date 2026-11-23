@@ -18,7 +18,9 @@ sink, and the crosspoint in the middle doesn't care which is which.
 > real Duo 2**: 2531 frames with zero late and zero dropped by the card's own count, though the
 > pixels on the wire haven't been checked.
 >
-> **Not started:** the UVC virtual camera, the virtual display, DeckLink capture, Spout, HTML
+> **Experimental:** the macOS virtual display (private API; see below).
+>
+> **Not started:** the UVC virtual camera, DeckLink capture, Spout, HTML
 > output, and ST 2110 audio and ancillary. Windows and Linux build and self-test in CI but **have
 > never been run interactively, and no hardware path exists on either.**
 >
@@ -71,6 +73,7 @@ fault, and that's an expensive hour. Every node takes an interface.
 | **DeckLink output** | Run on a real Duo 2 at 1080p50 in v210. |
 | **Screen, window, application and region capture** (macOS) | Built and run. A region of interest is a source rect, so a crop costs nothing. |
 | **Syphon output** (macOS) | Verified against Resolume's Syphon — a different implementation from the one vendored here. |
+| **Virtual display** (macOS, experimental) | A display other software can output to, sent out over any sink. Run with Resolume Arena's Advanced Output into OMT. Private API — see below. |
 | **Desktop launcher** | Shipped since v0.1.1. Pick an interface and a port, press Start, and it opens the control page. Closing its window hides it to the tray (the menu bar on a Mac) and leaves the engine running. |
 
 ---
@@ -108,11 +111,46 @@ Hardware encoders are used where there are any.
 
 ---
 
+## The virtual display (macOS, experimental)
+
+A `virtual-display` node creates a display that macOS and every application treat as a real one:
+it's listed in System Settings > Displays, windows can be dragged onto it, and software that
+outputs full screen to a display can choose it. Route the node to an OMT, NDI, SRT, DeckLink or
+Syphon sink and whatever is on the display goes out over that.
+
+The case it was built for is **Resolume's Advanced Output**, whose output devices are built into
+the app: there's no way to add OMT to that list, but a screen whose device is a virtual display
+can be sent anywhere Frame Ferret sends. `config/virtual-display.json` is the starting point:
+
+```json
+{ "id": "screen", "kind": "virtual-display", "target": "Frame Ferret Display",
+  "width": 1920, "height": 1080, "rate": "60" }
+```
+
+- `target` names the display (then `label`, then "Frame Ferret"). Resolume doesn't show that
+  name: it lists displays by number, so the virtual one is the "Display 2 (1920x1080)" or
+  similar that appears when Frame Ferret starts. Use Output > Identify Displays to be sure.
+- The display exists while Frame Ferret runs and goes when it stops. The same name gets the same
+  serial number every time, so macOS remembers where it was arranged.
+- It needs Screen Recording permission, like screen capture.
+- **Use a whole rate** (25, 30, 50, 60). macOS runs a virtual display at whole rates only: a 59.94
+  display runs at 60, and Frame Ferret warns that its capture will drop about one frame every
+  17 seconds.
+- The pointer isn't captured. If you move it onto the display it won't appear in the output.
+- **It is private API.** macOS has no public way to create a display; this uses the same
+  CoreGraphics classes as Sidecar, BetterDisplay and DeskPad. A future macOS could remove them.
+  If one does, this node fails with a sentence saying so and everything else keeps working.
+- Like any screen capture, it can lose a frame when the Mac is heavily loaded, because the window
+  server skips composites. Run on an idle machine it was clean.
+
+---
+
 ## What is not built
 
 Designed and documented, but not implemented: the UVC virtual camera (it needs an embedded
-provisioning profile the release harness doesn't produce yet), the virtual display (no public macOS
-API exists), DeckLink capture, Spout, HTML output, and ST 2110-30 audio and -40 ancillary.
+provisioning profile the release harness doesn't produce yet), the Windows virtual display (an
+IddCx driver needs attestation signing), DeckLink capture, Spout, HTML output, and ST 2110-30
+audio and -40 ancillary.
 
 They're left out of the UI rather than sitting there failing.
 
@@ -127,4 +165,6 @@ They're left out of the UI rather than sitting there failing.
 | **Blue reads 178 over NDI** | NDI's compression. Independent senders land on the same number. |
 | **SRT does nothing** | It needs an ffmpeg. Check the resolution order above; a wrong explicit path is an error rather than a silent fallback. |
 | **A node type is missing** | Run `frame-ferret kinds`. Several are designed but not built — see above. |
+| **The virtual display says "never made it active" or "no CGVirtualDisplay"** | The first is the window server refusing it, usually right after a macOS update; restart Frame Ferret. The second means this macOS no longer has the private classes. |
+| **The virtual display is in Resolume but the output is black** | The Resolume screen isn't enabled, or the sink isn't routed to the display. A missing Screen Recording permission stops the node with a sentence rather than sending black. |
 | **It does nothing on Windows or Linux** | Both build and self-test in CI and have never been run interactively. No hardware path exists on either. |

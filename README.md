@@ -3,8 +3,8 @@
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
 > (Anthropic), directed and reviewed by a human author. Every transport that's built has been
 > checked against an implementation that isn't this code, and DeckLink output has run on a real
-> Duo 2. The UVC virtual camera, virtual display, Spout, DeckLink capture, HTML output and 2110
-> audio and ancillary aren't written yet. The details, including what each check was against,
+> Duo 2. The UVC virtual camera, Spout, DeckLink capture, HTML output and 2110
+> audio and ancillary aren't written yet; the macOS virtual display is built and experimental. The details, including what each check was against,
 > are under [Status](#status).
 
 A virtual capture card, in software. It's one application that acts as an **NDI, OMT, SRT and
@@ -77,7 +77,7 @@ grows.
 | ST 2110-30 audio, -40 ancillary | **Not started** |
 | **Display, window, application and ROI capture** (macOS) | **Built and run.** ScreenCaptureKit; region of interest is a source rect, so a crop costs nothing |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
-| Virtual display | **Not started.** No public macOS API exists — see the same document |
+| **Virtual display** (macOS) | **Built, experimental — private API.** A real display other apps can output to; route it to any sink. Run with Resolume Arena's Advanced Output into an OMT sender: 60.0 fps, no frame out of order, bars within 3 levels. Windows (IddCx) not started — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
 | Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It's a window plus a tray icon (in the menu bar on a Mac): closing the window hides it to the tray and leaves the engine running |
@@ -210,9 +210,11 @@ everything downstream:
 - **ST 2110-20 is a wide-profile sender.** Narrow profile needs hardware transmit pacing, and
   macOS also has no supported hardware timestamping path for PTP. Wide is in spec and widely
   accepted, but it isn't the same claim. [docs/02-st2110.md](docs/02-st2110.md)
-- **macOS has no public virtual display API.** The only route is private CoreGraphics classes.
-  ScreenCaptureKit window/application capture may cover most of what people actually want the
-  feature for. [docs/03-os-extensions.md](docs/03-os-extensions.md)
+- **macOS has no public virtual display API.** The only route is private CoreGraphics classes,
+  which the virtual display node uses, looked up at run time so a macOS without them loses that
+  node and nothing else. Window and application capture cover dragging an app onto a surface;
+  the virtual display is for software that can only output to a display, such as Resolume's
+  Advanced Output. [docs/03-os-extensions.md](docs/03-os-extensions.md)
 
 <!-- downloads:start -->
 

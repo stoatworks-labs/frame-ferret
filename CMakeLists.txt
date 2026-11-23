@@ -30,6 +30,8 @@ add_library(ferret_core STATIC
   src/core/convert.cpp
   src/sources/test_pattern.cpp
   src/sources/screen_capture_stub.cpp
+  src/sources/virtual_display_plan.cpp
+  src/sources/virtual_display_stub.cpp
   src/sinks/preview.cpp
   src/sinks/decklink.cpp
   src/sinks/syphon_stub.cpp
@@ -67,6 +69,15 @@ if(APPLE)
   # ScreenCaptureKit: display, window, application and region capture.
   target_sources(ferret_core PRIVATE src/sources/screen_capture.mm)
   set_source_files_properties(src/sources/screen_capture.mm PROPERTIES
+    COMPILE_OPTIONS "-fobjc-arc")
+  # The virtual display: private CGVirtualDisplay, captured as above. The
+  # classes are looked up at run time, so nothing extra is linked.
+  target_sources(ferret_core PRIVATE src/sources/virtual_display.mm)
+  # The main thread's wait pumps AppKit events on macOS; main_loop_mac.mm says why.
+  target_sources(ferret_core PRIVATE src/app/main_loop_mac.mm)
+  set_source_files_properties(src/app/main_loop_mac.mm PROPERTIES
+    COMPILE_OPTIONS "-fobjc-arc")
+  set_source_files_properties(src/sources/virtual_display.mm PROPERTIES
     COMPILE_OPTIONS "-fobjc-arc")
   target_link_libraries(ferret_core PUBLIC
     "-framework ScreenCaptureKit" "-framework CoreMedia" "-framework CoreVideo"
@@ -184,7 +195,7 @@ endif()
 # ---------------------------------------------------------------------------
 enable_testing()
 
-foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt st2110)
+foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt st2110 virtual_display)
   add_executable(test_${t} tests/test_${t}.cpp)
   target_link_libraries(test_${t} PRIVATE ferret_core)
   # So a test can assert on the source of a transport it cannot otherwise

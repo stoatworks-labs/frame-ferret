@@ -130,9 +130,16 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   genuinely different pictures — which is the check that proves the crop is
   applied rather than silently ignored.
 
+- **Virtual display (macOS, private API, experimental), run on this machine.**
+  Resolume Arena's Advanced Output on the virtual display, routed to an OMT
+  sink, read back by an independent receiver decoding a frame counter: 601
+  frames in 10 s, counter +600, nothing out of order, bars within 3 levels.
+  `docs/03-os-extensions.md` has the run and the NSApplicationLoad trap.
+
 **Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
-Spout, the HTML output and the OS extensions. Do not describe any of it as
-working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
+Spout, the HTML output and the OS extensions other than the macOS virtual
+display (both virtual cameras, the Windows display). Do not describe any of it
+as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,

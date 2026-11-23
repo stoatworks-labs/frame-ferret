@@ -2,6 +2,7 @@
 
 #include "sources/screen_capture.h"
 #include "sources/test_pattern.h"
+#include "sources/virtual_display.h"
 #include "transports/ndi.h"
 #include "sinks/decklink.h"
 #include "sinks/syphon.h"
@@ -24,6 +25,7 @@ bool isImplemented(NodeKind kind) {
     case NodeKind::displayCapture:
     case NodeKind::windowCapture:
     case NodeKind::applicationCapture:
+    case NodeKind::virtualDisplay:
       return true;
     default:
       return false;
@@ -116,6 +118,27 @@ bool buildNodes(const AppConfig& config, Engine& engine,
           continue;
         }
         // ScreenCaptureKit delivers BGRA, full range.
+        engine.addSource(std::move(source), PixelFormat::bgra8);
+        ++built;
+        break;
+      }
+
+      case NodeKind::virtualDisplay: {
+        // Planned here as well as inside the source so a rate the display
+        // cannot run at exactly is a warning on the page, not only a line on
+        // stderr.
+        VirtualDisplayPlan plan;
+        std::string planError;
+        if (planVirtualDisplay(node, &plan, planError) &&
+            !plan.warning.empty()) {
+          warnings.push_back({node.id, plan.warning});
+        }
+        auto source = makeVirtualDisplaySource(node, reason);
+        if (!source) {
+          failures.push_back({node.id, reason});
+          continue;
+        }
+        // Captured with ScreenCaptureKit: BGRA, full range.
         engine.addSource(std::move(source), PixelFormat::bgra8);
         ++built;
         break;

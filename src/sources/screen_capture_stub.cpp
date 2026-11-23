@@ -27,6 +27,11 @@ std::unique_ptr<Source> makeDisplaySource(const NodeConfig&,
   error = ScreenCapture::unsupportedReason();
   return nullptr;
 }
+std::unique_ptr<Source> makeDisplaySourceForId(const NodeConfig&, uint32_t,
+                                               int, bool, std::string& error) {
+  error = ScreenCapture::unsupportedReason();
+  return nullptr;
+}
 std::unique_ptr<Source> makeWindowSource(const NodeConfig&,
                                          std::string& error) {
   error = ScreenCapture::unsupportedReason();

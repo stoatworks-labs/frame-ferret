@@ -235,6 +235,15 @@ applied, not ignored). ROI is a `sourceRect`, so it crops before copying.
   default, do it LAST — and first build ScreenCaptureKit window/application
   capture, which is public API and may absorb most of what the feature is
   actually wanted for. `docs/03-os-extensions.md`.
+- **2026-11-23: the macOS virtual display is BUILT** (`virtual-display` node),
+  at Allan's request, so Resolume's Advanced Output can reach OMT (its device
+  list is compiled in; the companion FFGL plugins are in `~/dev/resolume-omt`).
+  Private classes looked up by name, never linked. Run end to end through Arena:
+  601 frames in 10 s, counter +600, bars within 3. **The trap:** after
+  `NSApplicationLoad()` a new display gets no mode until AppKit events are
+  pumped; a bare CFRunLoop wait never does it. `waitServicingMainLoop` on macOS
+  now pumps events (`main_loop_mac.mm`). Arena lists the display by number
+  ("Display 2"), never by its macOS name.
 
 **Unresolved and blocking the installer design:** a macOS system extension must
 activate from an app in `/Applications`, but the fleet's usual

@@ -5,7 +5,8 @@ system extensions, they need signing paperwork that takes calendar time rather
 than engineering time, and two of them constrain how the whole product is
 distributed. This document is the map, written before the work starts.
 
-Nothing here is implemented. Status of every item is **not started**.
+The macOS virtual display is built, experimental (2026-11-23; see its section).
+The other three items are **not started**.
 
 ## The four items and their real difficulty
 
@@ -14,7 +15,7 @@ Nothing here is implemented. Status of every item is **not started**.
 | Virtual camera | macOS | CMIOExtension | Moderate | Provisioning profile in the release harness |
 | Virtual camera | Windows | MFVirtualCamera | **Low** | None |
 | Virtual display | Windows | IddCx driver | High | Attestation signing |
-| Virtual display | macOS | — | **Highest** | *No public API exists* |
+| Virtual display | macOS | Private `CGVirtualDisplay` | **Built, experimental** | *No public API exists* |
 
 Do the Windows virtual camera first. It is by far the cheapest of the four and
 it validates the whole sink-side frame path before any signing paperwork is in
@@ -154,6 +155,54 @@ window or application directly, with no virtual display involved. That is
 model, both public API, and both far cheaper. Both are built now (cd948fd), so
 the next step is seeing how much of the virtual display's purpose is left over.
 
+### Built (2026-11-23)
+
+What was left over turned out to be real: **applications that output to a
+display, not a window.** Resolume Arena's Advanced Output is the case that drove
+it. Its output devices (display, NDI, Syphon, virtual, capture) are compiled
+into the app, so no plugin can add OMT to the list, and a full-screen output
+window on a physical display is not something window capture can stand in for.
+
+`virtual-display` (`src/sources/virtual_display.{h,mm}`) creates one display per
+node and captures it with the existing ScreenCaptureKit path, by display ID.
+
+- **Held at arm's length.** The four private classes are found with
+  `NSClassFromString` and driven through protocols, never named in code, so the
+  binary does not import `_OBJC_CLASS_$_CGVirtualDisplay`. A macOS that drops
+  them fails this node with a sentence; it cannot stop Frame Ferret launching.
+  `nm -u frame-ferret` shows no CGVirtualDisplay symbol.
+- **Off by default** in the sense the recommendation meant: it exists only when
+  a config asks for a `virtual-display` node.
+- **Decisions are testable.** `planVirtualDisplay()` (name, raster, whole-hertz
+  rate, stable serial, ~100 ppi physical size) is in `ferret_core`, pinned by
+  `test_virtual_display`.
+- **Fractional rates warn.** macOS folds 59.94 to 60 (measured in the
+  decklink-display spike), so a 59.94 node runs a 60 Hz display and puts the
+  expected drop rate (one frame every ~17 s) in the factory's warnings.
+- **Capture asks for refresh + 1 Hz**, because ScreenCaptureKit drops a frame
+  that lands a hair early against an exact minimum interval.
+
+**The trap that cost the first run:** the display was in the active list within
+60 ms but `CGDisplayCopyDisplayMode` stayed NULL indefinitely. Cause:
+`initialiseWindowServer()` calls `NSApplicationLoad()`, after which display
+reconfiguration reaches CoreGraphics as AppKit events, and
+`waitServicingMainLoop` only ran the CFRunLoop, which never dequeues an event.
+A probe across every combination: NSApplicationLoad + run loop never got a
+mode; NSApplicationLoad + an NSApp event pump, or no AppKit at all, got one in
+40-80 ms. The macOS wait (`src/app/main_loop_mac.mm`) now pumps events, which
+still services the main dispatch queue the Syphon sink depends on.
+
+**Run, 2026-11-23, macOS 26.4, Resolume Arena 7.29:** Arena listed the new
+display live as "Display 2 (1920x1080)" (it numbers displays; it never shows the
+macOS name). An Advanced Output preset with one screen on that device, fed by
+an OMT test card, routed by Frame Ferret to an OMT sender and read back by an
+independent receiver that decodes the card's frame counter: **601 frames in
+10 s, 60.0 fps, counter +600, nothing out of order, upright, bars within 3
+levels.** The same through Arena's simple full-screen output.
+
+Not done: Windows (IddCx), audio, and a run on a heavily loaded machine — the
+spike measured capture losses under load whatever the capture API.
+
 ## Sequencing
 
 1. Windows virtual camera (MFVirtualCamera) — cheapest, validates the sink path
@@ -166,4 +215,6 @@ the next step is seeing how much of the virtual display's purpose is left over.
 4. macOS virtual camera (CMIOExtension)
 5. Windows IddCx virtual display, if the Partner Center route is worth opening
 6. macOS virtual display, private API, flagged experimental — last, and only if
-   step 2 leaves a real gap
+   step 2 leaves a real gap. **Built early, 2026-11-23**: step 2 did leave one.
+   Software that can only output to a display (Resolume's Advanced Output, whose
+   device list is compiled in) cannot be reached by window capture

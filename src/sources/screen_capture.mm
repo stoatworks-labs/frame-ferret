@@ -201,20 +201,36 @@ class ScreenSource final : public Source {
 namespace ferret {
 namespace {
 
+/// How a stream differs between callers. The defaults are the screen, window
+/// and application capture's.
+struct CaptureOptions {
+  bool showsCursor = true;
+  /// Zero means the node's rate, exactly.
+  int refreshHz = 0;
+};
+
 /// Builds and starts a stream for an already-chosen filter.
 std::unique_ptr<Source> startCapture(const NodeConfig& config,
                                      SCContentFilter* filter,
-                                     std::string& error) {
+                                     std::string& error,
+                                     CaptureOptions options = {}) {
   SCStreamConfiguration* streamConfig = [[SCStreamConfiguration alloc] init];
   streamConfig.width = static_cast<size_t>(config.width);
   streamConfig.height = static_cast<size_t>(config.height);
   streamConfig.pixelFormat = kCVPixelFormatType_32BGRA;
-  streamConfig.showsCursor = YES;
+  streamConfig.showsCursor = options.showsCursor ? YES : NO;
   streamConfig.queueDepth = 5;
   // The rational, exactly — a capture at "50" that is really 50.0000001 drifts
   // against every other clock in the program.
   streamConfig.minimumFrameInterval =
       CMTimeMake(config.rate.den, static_cast<int32_t>(config.rate.num));
+  if (options.refreshHz > 0) {
+    // A display we own: one hertz faster than its refresh, so a composite
+    // that lands a little early is kept rather than skipped. Measured in the
+    // decklink-display spike, where an exact interval showed 33 ms gaps.
+    streamConfig.minimumFrameInterval =
+        CMTimeMake(1000, (options.refreshHz + 1) * 1000);
+  }
 
   // A region of interest is a source rect, so the crop happens before anything
   // is copied — it is not a full capture that is then thrown away.
@@ -356,6 +372,29 @@ std::unique_ptr<Source> makeDisplaySource(const NodeConfig& config,
       [[SCContentFilter alloc] initWithDisplay:display
                               excludingWindows:@[]];
   return startCapture(config, filter, error);
+}
+
+std::unique_ptr<Source> makeDisplaySourceForId(const NodeConfig& config,
+                                               uint32_t displayId,
+                                               int refreshHz, bool showsCursor,
+                                               std::string& error) {
+  SCShareableContent* content = fetchContent(nullptr, 5.0);
+  if (!content || content.displays.count == 0) {
+    error = ScreenCapture::permissionReason();
+    return nullptr;
+  }
+  for (SCDisplay* display in content.displays) {
+    if (display.displayID != displayId) continue;
+    SCContentFilter* filter =
+        [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
+    CaptureOptions options;
+    options.showsCursor = showsCursor;
+    options.refreshHz = refreshHz;
+    return startCapture(config, filter, error, options);
+  }
+  error = "display " + std::to_string(displayId) +
+          " is not one ScreenCaptureKit can see";
+  return nullptr;
 }
 
 std::unique_ptr<Source> makeWindowSource(const NodeConfig& config,

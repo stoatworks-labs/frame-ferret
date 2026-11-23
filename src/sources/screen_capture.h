@@ -59,6 +59,20 @@ class ScreenCapture {
 std::unique_ptr<Source> makeDisplaySource(const NodeConfig& config,
                                           std::string& error);
 
+/// One display by its CoreGraphics ID rather than its index — the index moves
+/// as displays come and go, the ID does not. This is how the virtual display
+/// captures itself.
+///
+/// `refreshHz` is the display's own rate. The capture is asked for slightly
+/// faster than it: ScreenCaptureKit drops a frame that lands a hair early
+/// against its minimum interval, so asking for exactly the display rate turns
+/// ordinary vsync jitter into 33 ms gaps. The engine still takes one frame a
+/// tick. `showsCursor` false keeps the pointer out of an output.
+std::unique_ptr<Source> makeDisplaySourceForId(const NodeConfig& config,
+                                               uint32_t displayId,
+                                               int refreshHz, bool showsCursor,
+                                               std::string& error);
+
 /// One window, matched as a substring against its title. Follows the window if
 /// it moves or resizes; the raster stays at the configured size.
 std::unique_ptr<Source> makeWindowSource(const NodeConfig& config,
