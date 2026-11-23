@@ -244,6 +244,15 @@ applied, not ignored). ROI is a `sourceRect`, so it crops before copying.
   pumped; a bare CFRunLoop wait never does it. `waitServicingMainLoop` on macOS
   now pumps events (`main_loop_mac.mm`). Arena lists the display by number
   ("Display 2"), never by its macOS name.
+- **2026-11-23, released as v0.3.0 — and the signed Mac builds could never load
+  NDI or OMT.** Running the downloaded release CLI for the Instagram shot, both
+  runtimes came back "not installed": library validation refuses a Vizrt-signed
+  or ad hoc library in a hardened Developer ID process ("different Team IDs").
+  True of every signed build since signing began, launcher included. Fixed in
+  the fleet signer (stoatworks-backend f578f205: library validation off for an
+  executable that names libndi or libomt) and v0.3.0's dmg, pkg and zip were
+  re-signed in place; the downloaded CLI and the app's engine then loaded both.
+  `frame-ferret help` still says only the test pattern and preview exist: stale.
 
 **Unresolved and blocking the installer design:** a macOS system extension must
 activate from an app in `/Applications`, but the fleet's usual

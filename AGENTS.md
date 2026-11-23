@@ -135,6 +135,14 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   sink, read back by an independent receiver decoding a frame counter: 601
   frames in 10 s, counter +600, nothing out of order, bars within 3 levels.
   `docs/03-os-extensions.md` has the run and the NSApplicationLoad trap.
+  Also run from the **signed, notarised v0.3.0 release CLI** as downloaded:
+  the display came up at 1920x1080 @ 60 Hz and fed OMT, NDI, Syphon and a
+  preview for 732 ticks, 2928 frames, 0 black, 1 late, with macOS's own
+  `dns-sd` listing the OMT sender.
+
+- **The signed macOS builds load NDI and OMT — from v0.3.0's re-sign on.**
+  Every earlier signed Mac build, CLI and launcher alike, could not: see the
+  library-validation trap below.
 
 **Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
 Spout, the HTML output and the OS extensions other than the macOS virtual
@@ -257,6 +265,16 @@ Carried forward from the fleet, because these will be hit again here.
 - **Never link NDI at build time.** Runtime-load it. A cross-compiled target
   otherwise ships with NDI silently disabled, which is what happened to
   openstage for every release until someone checked.
+- **A signed build needs library validation off to load NDI or OMT.** The
+  hardened runtime only maps libraries signed by the process's own team; the
+  NDI runtime is Vizrt-signed and libomt is ad hoc, so dlopen fails with
+  "mapping process and mapped file (non-platform) have different Team IDs"
+  and the node reports the runtime "not installed". Every signed Mac build up
+  to v0.3.0 shipped that way while the same binary unsigned loaded both — a
+  dev build never shows it. The fleet's post-hoc signer now gives
+  `com.apple.security.cs.disable-library-validation` to any executable that
+  names libndi or libomt (stoatworks-backend f578f205). Check a release by
+  running the DOWNLOADED binary's `sources --protocol omt`, never a local build.
 - **NDI's audio FourCC is `FLTp`, with a LOWERCASE p**, despite every document
   writing "FLTP". Assume the obvious spelling and the SDK treats every audio
   frame as an unknown format: video works perfectly and audio silently never
