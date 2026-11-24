@@ -1,6 +1,6 @@
 # Undoes vdd-install.ps1 on a test machine: the Root\MttVDD device, the driver
-# package, the trusted-publisher certificate, the settings folder and the
-# registry key. Leaves the machine as it was before.
+# package, the phantom monitors it left, the trusted-publisher certificate, the
+# settings folder and the registry key. Leaves the machine as it was before.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File vdd-remove.ps1 -Package <dir>
 #
@@ -32,6 +32,15 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     }
   }
 }
+
+# Windows keeps the VDD monitors it has seen as phantom devices (winlab had
+# five after a session of reloads and restarts); they outlive the driver.
+Get-PnpDevice -Class Monitor -ErrorAction SilentlyContinue |
+  Where-Object { $_.InstanceId -like 'DISPLAY\MTT1337\*' } |
+  ForEach-Object {
+    "removing monitor $($_.InstanceId)"
+    pnputil /remove-device "$($_.InstanceId)" | Out-Null
+  }
 
 $cat = Join-Path $Package 'mttvdd.cat'
 if (Test-Path $cat) {
