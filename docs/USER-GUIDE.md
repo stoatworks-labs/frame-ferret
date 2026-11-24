@@ -77,7 +77,7 @@ fault, and that's an expensive hour. Every node takes an interface.
 | **Screen and region capture** (Windows) | Built and run on a Windows VM, with Desktop Duplication. Window and application capture aren't written for Windows yet. |
 | **Syphon output** (macOS) | Verified against Resolume's Syphon — a different implementation from the one vendored here. |
 | **Virtual display** (macOS, experimental) | A display other software can output to, sent out over any sink. Run with Resolume Arena's Advanced Output into OMT. Private API — see below. |
-| **Virtual display** (Windows, experimental) | The same, on VirtualDrivers' signed display driver, which you install once. Run on a Windows VM into NDI. On main, not in a release yet — see below. |
+| **Virtual display** (Windows, experimental) | The same, on VirtualDrivers' signed display driver, which you install once. Run on a Windows VM into NDI. New in v0.4.0 — see below. |
 | **Desktop launcher** | Shipped since v0.1.1. Pick an interface and a port, press Start, and it opens the control page. Closing its window hides it to the tray (the menu bar on a Mac) and leaves the engine running. |
 
 ---
@@ -151,7 +151,7 @@ can be sent anywhere Frame Ferret sends. `config/virtual-display.json` is the st
 
 ## The virtual display on Windows (experimental)
 
-**Not in v0.3.0.** It's on main and comes with the next release.
+**New in v0.4.0.**
 
 Windows won't load a display driver Microsoft hasn't signed, so Frame Ferret doesn't bring one.
 It uses VirtualDrivers' **Virtual Display Driver** (VDD), which is free, MIT-licensed and signed,
