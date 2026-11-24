@@ -515,9 +515,9 @@ int usage() {
       "`--collect-diagnostics` is accepted as an alias for `diagnostics`, which\n"
       "is the spelling the issue form asks for. See docs/diagnostics.md.\n"
       "\n"
-      "Only the test pattern and preview nodes exist in this build. Every\n"
-      "transport, capture source and hardware output is designed but not\n"
-      "implemented — see docs/ROADMAP.md.\n",
+      "`kinds` lists every node kind in the design, built or not.\n"
+      "docs/ROADMAP.md says which are built and on which platforms, and a\n"
+      "node this build cannot make says why when `run` starts it.\n",
       FERRET_VERSION);
   return 0;
 }

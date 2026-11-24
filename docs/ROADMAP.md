@@ -82,9 +82,11 @@ Still to do here: a ten-minute soak, and audio actually verified.
 
 ## Phase 3 — capture sources
 
-- Display and region-of-interest capture via ScreenCaptureKit ✅ done
-- Window and application capture ✅ done — **do these before the virtual
-  display**, as they may absorb most of what it is wanted for
+- Display and region-of-interest capture ✅ done: ScreenCaptureKit on macOS,
+  and Desktop Duplication on Windows since v0.4.0
+- Window and application capture ✅ done on macOS — **do these before the
+  virtual display**, as they may absorb most of what it is wanted for. Not
+  written for Windows, where they need Windows.Graphics.Capture
 - Syphon / Spout client input
 
 ## Phase 4 — control
@@ -118,11 +120,14 @@ release harness has never produced.
 2. Provisioning-profile support in `release-lib.sh` — fleet infrastructure, and
    the gate on everything below
 3. macOS virtual camera (CMIOExtension)
-4. Windows virtual display (IddCx), if attestation signing is worth opening
-5. macOS virtual display — private API, off by default, experimental, and only
-   if phase 3 leaves a real gap. **Built 2026-11-23**, ahead of the rest of this
-   phase: software that only outputs to a display (Resolume's Advanced Output)
-   was the gap. See 03-os-extensions.md
+4. Windows virtual display ✅ **released in v0.4.0**, experimental. Not an IddCx
+   driver of our own, which would need Microsoft's attestation signing: the
+   node drives VirtualDrivers' signed Virtual Display Driver, which the
+   operator installs once. See 03-os-extensions.md
+5. macOS virtual display ✅ **released in v0.3.0** — private API, off by default,
+   experimental, and only if phase 3 leaves a real gap. Built ahead of the rest
+   of this phase: software that only outputs to a display (Resolume's Advanced
+   Output) was the gap. See 03-os-extensions.md
 
 ## Unresolved, and needing a decision before the installer is designed
 
