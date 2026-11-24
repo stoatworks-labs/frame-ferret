@@ -5,8 +5,9 @@ system extensions, they need signing paperwork that takes calendar time rather
 than engineering time, and two of them constrain how the whole product is
 distributed. This document is the map, written before the work starts.
 
-The macOS virtual display is built, experimental (2026-11-23; see its section).
-The other three items are **not started**.
+The virtual display is built and experimental on macOS (2026-11-23) and on
+Windows (2026-11-24, on a third-party signed driver); see their sections. The
+two virtual cameras are **not started**.
 
 ## The four items and their real difficulty
 
@@ -14,7 +15,7 @@ The other three items are **not started**.
 |---|---|---|---|---|
 | Virtual camera | macOS | CMIOExtension | Moderate | Provisioning profile in the release harness |
 | Virtual camera | Windows | MFVirtualCamera | **Low** | None |
-| Virtual display | Windows | IddCx driver | High | Attestation signing |
+| Virtual display | Windows | VirtualDrivers' signed IddCx driver (VDD) | **Built, experimental** | Our own driver would need attestation signing; VDD's is signed |
 | Virtual display | macOS | Private `CGVirtualDisplay` | **Built, experimental** | *No public API exists* |
 
 Do the Windows virtual camera first. It is by far the cheapest of the four and
@@ -127,6 +128,94 @@ The blocker is distribution. A driver package needs:
 That is a real cost and a real lead time. It is not a technical risk so much as
 an administrative one, and it should be started early or dropped early.
 
+### Built (2026-11-24): someone else's signed driver
+
+There is no EV certificate or Partner Center account, so instead of an
+unsigned driver nobody could load, the Windows `virtual-display` node drives
+**VirtualDrivers' Virtual Display Driver** (VDD: an IddCx driver, MIT, signed
+through the SignPath Foundation), which the operator installs once. The node
+(`src/sources/virtual_display_win.cpp`) claims a VDD display, gives it the
+planned mode and captures it with DXGI Desktop Duplication
+(`src/sources/screen_capture_win.cpp`, which is also Windows display capture).
+
+How VDD is driven, all measured on winlab with VDD 25.7.23:
+
+- **Finding its displays.** VDD's EDID says maker `MTT`, product `0x1337`, so
+  its monitor device path contains `#MTT1337#`. The GDI name (`DISPLAY3`) is
+  not stable: every VDD reload renumbers it. The connector's `UIDnnn` in the
+  device path survives a reload, so a node holds its display by that and asks
+  for the GDI name again whenever the duplication is lost.
+- **Modes come from its settings file**, `vdd_settings.xml`, in the folder
+  `HKLM\SOFTWARE\MikeTheTech\VirtualDisplayDriver\VDDPATH` names (else
+  `C:\VirtualDisplayDriver`). A mode is each `<resolution>` at its own
+  `<refresh_rate>`, plus every `<g_refresh_rate>` for every listed resolution.
+  A missing mode is added as a `<resolution>` block marked "added by Frame
+  Ferret", the file swapped in whole, and VDD told to reload.
+- **Its control pipe** is `\\.\pipe\MTTVirtualDisplayPipe`: UTF-16 commands
+  in message mode, open to every user. `RELOAD_DRIVER` rereads the settings
+  and takes every VDD display away for about 1.2 s.
+- **The mode is set with SetDisplayConfig**, the source mode's raster and the
+  path's refresh rational, target mode left for Windows to match. With
+  per-monitor DPI awareness V2 set at startup, so a scaled monitor's numbers
+  are real pixels.
+- **No fractional rates.** With `59.9401` in the settings, Windows lists no
+  59 Hz mode on the display and `ChangeDisplaySettingsEx` at 59 answers
+  `BADMODE`. VDD's `CreateTargetMode` works the pixel rate out as
+  `VSyncNum * Width * Height / VSyncDen` in 32-bit `UINT`s, which overflows for
+  any four-place rate (599401 x 1920 x 1080); that is the likely reason. So the
+  plan folds a fractional rate to the whole rate above it, as on macOS, and
+  warns.
+- **Session 0 has no displays.** From ssh or a service every display API
+  answers empty. The node says so up front; the bench runs in the signed-in
+  session through a scheduled task (`tools/winlab/s1run.ps1`).
+
+The capture side:
+
+- **Read back before ReleaseFrame.** The copy to the staging texture is only
+  queued until Map. Mapping after the frame went back to DWM, the node took 16
+  new pictures a second where raw duplication took 30; mapping first (as
+  Microsoft's samples do), with a 1 ms timer, it matched raw.
+- **`timeBeginPeriod(1)` at startup.** Without it Windows sleeps in 15.6 ms
+  steps, so the engine's `sleep_until` woke on those steps rather than on its
+  deadlines (a 2 ms poll loop ran 62 times a second).
+- **The desktop's alpha is forced to 255**, HDR (non-BGRA8) and rotated
+  displays are refused with a sentence, and the pointer is not drawn.
+
+**Run, 2026-11-24, winlab** (Windows 11 Pro 26200 in QEMU, no GPU: Microsoft
+Basic Render Driver, two cores). `tools/vdbench` puts a counter test card (the
+omttest layout) full screen on VDD's display from a separate process and judges
+what comes back:
+
+| Route, 1920x1080p60 | Delivered | New pictures | Out of order | Bars |
+| --- | --- | --- | --- | --- |
+| Node in-process (`vdbench direct`) | latest frame | 28.9/s | 0 | exact |
+| Node → NDI sender → `vdbench probe` in another process | 60.1 fps | 26.9/s | 0 | within 1 level |
+| Raw Desktop Duplication, no Frame Ferret (`vdbench dup copy`) | — | 29.6/s | — | — |
+
+Over two NDI runs the engine held 59.89 and 59.92 fps, with 8% and 2% of its
+ticks late, and the receiver got 26.6 and 26.9 new pictures a second. The ceiling is the VM: DWM
+composed VDD's display about 42 times a second whatever the card drew, and the
+copy to memory competes with DWM rendering in software on two cores. 1280x720
+at 50 gave 26.7/s; 1600x900 at 30, a mode VDD did not list, was added, VDD
+reloaded, and the capture (19.8/s) was upright with exact bars.
+
+Two bench traps, both fixed in vdbench: a card drawn as 16 separate GDI cells
+tears (DWM composes halfway through, and the counter reads backwards), so the
+counter strip goes up in one `SetDIBitsToDevice`; and an all-black desktop
+decodes as counter 0, so the bench waits for the bars as well as a counter.
+
+**A VDD reload during capture** (sent over the pipe by someone else): twice
+the node logged the display gone, then "capturing \\.\DISPLAYn again" and
+carried on. Once, VDD's device itself went into an error state and stayed
+there (raw duplication and the card alone survived a reload each); restarting
+the device (`pnputil /restart-device`, or Disable/Enable in Device Manager)
+brought the display back and the node picked it up. The node now says "VDD has
+stopped" with that remedy when VDD's pipe is gone.
+
+Not done: a machine with a GPU, Resolume on Windows, OMT on Windows, the mode
+re-applied if Windows restores a different one after a reload, and window and
+application capture (they need Windows.Graphics.Capture).
+
 ## macOS virtual display — the one with no supported answer
 
 **There is no public macOS API for creating a virtual display.**
@@ -200,8 +289,8 @@ independent receiver that decodes the card's frame counter: **601 frames in
 10 s, 60.0 fps, counter +600, nothing out of order, upright, bars within 3
 levels.** The same through Arena's simple full-screen output.
 
-Not done: Windows (IddCx), audio, and a run on a heavily loaded machine — the
-spike measured capture losses under load whatever the capture API.
+Not done: audio, and a run on a heavily loaded machine — the spike measured
+capture losses under load whatever the capture API.
 
 ## Sequencing
 
@@ -213,7 +302,8 @@ spike measured capture losses under load whatever the capture API.
    Ferret work — nothing else in the fleet needs it yet, but nothing else in
    the fleet can ship a system extension until it exists
 4. macOS virtual camera (CMIOExtension)
-5. Windows IddCx virtual display, if the Partner Center route is worth opening
+5. Windows IddCx virtual display, if the Partner Center route is worth opening.
+   **Built 2026-11-24 without that route**, on VirtualDrivers' signed VDD
 6. macOS virtual display, private API, flagged experimental — last, and only if
    step 2 leaves a real gap. **Built early, 2026-11-23**: step 2 did leave one.
    Software that can only output to a display (Resolume's Advanced Output, whose

@@ -36,13 +36,16 @@ void theNameComesFromTargetThenLabelThenADefault() {
 }
 
 void aWholeRateIsExactAndSilent() {
-  VirtualDisplayPlan plan;
-  std::string error;
-  NodeConfig c = base();
-  c.rate = Rate{50, 1};
-  CHECK(planVirtualDisplay(c, &plan, error));
-  CHECK_EQ(plan.refreshHz, 50);
-  CHECK(plan.warning.empty());
+  for (auto host : {VirtualDisplayHost::macos, VirtualDisplayHost::windowsVdd}) {
+    VirtualDisplayPlan plan;
+    std::string error;
+    NodeConfig c = base();
+    c.rate = Rate{50, 1};
+    CHECK(planVirtualDisplayFor(host, c, &plan, error));
+    CHECK_EQ(plan.refreshHz, 50);
+    CHECK(plan.refresh == (Rate{50, 1}));
+    CHECK(plan.warning.empty());
+  }
 }
 
 void aFractionalRateRunsAtTheWholeRateAndSaysSo() {
@@ -52,15 +55,44 @@ void aFractionalRateRunsAtTheWholeRateAndSaysSo() {
   std::string error;
   NodeConfig c = base();
   c.rate = Rate{60000, 1001};
-  CHECK(planVirtualDisplay(c, &plan, error));
+  CHECK(planVirtualDisplayFor(VirtualDisplayHost::macos, c, &plan, error));
   CHECK_EQ(plan.refreshHz, 60);
+  CHECK(plan.vddRefresh.empty());
+  CHECK(plan.warning.find("macOS") != std::string::npos);
   CHECK(!plan.warning.empty());
   CHECK(plan.warning.find("17 seconds") != std::string::npos);
 
   c.rate = Rate{24000, 1001};
-  CHECK(planVirtualDisplay(c, &plan, error));
+  CHECK(planVirtualDisplayFor(VirtualDisplayHost::macos, c, &plan, error));
   CHECK_EQ(plan.refreshHz, 24);
   CHECK(!plan.warning.empty());
+}
+
+void vddRunsTheWholeRateAboveAFractionalOne() {
+  // Measured on winlab: VDD 25.7.23 offers no fractional mode (59.9401 in its
+  // settings gives no 59 Hz mode, and asking for one is BADMODE), so 59.94
+  // runs at 60, written as "60", and says what that costs.
+  VirtualDisplayPlan plan;
+  std::string error;
+  NodeConfig c = base();
+  c.rate = Rate{60000, 1001};
+  CHECK(planVirtualDisplayFor(VirtualDisplayHost::windowsVdd, c, &plan, error));
+  CHECK_EQ(plan.vddRefresh, std::string("60"));
+  CHECK(plan.refresh == (Rate{60, 1}));
+  CHECK_EQ(plan.refreshHz, 60);
+  CHECK(plan.warning.find("VDD") != std::string::npos);
+  CHECK(plan.warning.find("17 seconds") != std::string::npos);
+
+  c.rate = Rate{30000, 1001};
+  CHECK(planVirtualDisplayFor(VirtualDisplayHost::windowsVdd, c, &plan, error));
+  CHECK_EQ(plan.vddRefresh, std::string("30"));
+  CHECK(plan.refresh == (Rate{30, 1}));
+  CHECK(!plan.warning.empty());
+
+  c.rate = Rate{60, 1};
+  CHECK(planVirtualDisplayFor(VirtualDisplayHost::windowsVdd, c, &plan, error));
+  CHECK_EQ(plan.vddRefresh, std::string("60"));
+  CHECK(plan.warning.empty());
 }
 
 void theSerialIsStableForANameAndDiffersBetweenNames() {
@@ -120,6 +152,7 @@ void run() {
   theNameComesFromTargetThenLabelThenADefault();
   aWholeRateIsExactAndSilent();
   aFractionalRateRunsAtTheWholeRateAndSaysSo();
+  vddRunsTheWholeRateAboveAFractionalOne();
   theSerialIsStableForANameAndDiffersBetweenNames();
   impossibleDisplaysAreRefusedWithASentence();
   thePhysicalSizeIsAnOrdinaryMonitor();

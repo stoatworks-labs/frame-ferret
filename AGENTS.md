@@ -140,21 +140,32 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   preview for 732 ticks, 2928 frames, 0 black, 1 late, with macOS's own
   `dns-sd` listing the OMT sender.
 
+- **Display capture and the virtual display (Windows, experimental), run on
+  winlab** — a GPU-less Windows 11 VM, in the signed-in session, never on real
+  hardware. The node drives VirtualDrivers' signed VDD driver (installed by
+  `tools/winlab/vdd-install.ps1`, removed by `vdd-remove.ps1`) and captures it
+  with Desktop Duplication. 1080p60 to an NDI sender, judged by `vdbench probe`
+  in a separate process: 60.1 fps, 26.9 new pictures a second (the VM's
+  ceiling: raw duplication gets 29.6), 0 out of order, bars within 1 level. A
+  mode VDD lacked was added, VDD reloaded and the renumbered display followed.
+  Fractional rates are not possible on VDD. `docs/03-os-extensions.md` has the
+  run, the numbers and the traps; `tools/winlab/*.cmd` reproduce it.
+
 - **The signed macOS builds load NDI and OMT — from v0.3.0's re-sign on.**
   Every earlier signed Mac build, CLI and launcher alike, could not: see the
   library-validation trap below.
 
 **Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
-Spout, the HTML output and the OS extensions other than the macOS virtual
-display (both virtual cameras, the Windows display). Do not describe any of it
-as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
+Spout, the HTML output, both virtual cameras, and window and application
+capture on Windows. Do not describe any of it as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
-conversion, pacing — they have genuinely *run* it, not merely compiled. But
-neither has been run interactively, neither has a window or a GPU path, and no
-hardware backend exists on any platform. Treat "the synthetic path runs on all
-three" as the claim; nothing stronger.
+conversion, pacing — they have genuinely *run* it, not merely compiled. On Windows, display capture
+and the virtual display have also run interactively on winlab (above); nothing
+else has on either, neither has a GPU path, and no hardware backend exists on
+any platform. Treat "the synthetic path runs on all three" as the claim for
+everything else.
 
 ## Nodes can be added and removed while running
 
@@ -247,6 +258,16 @@ Carried forward from the fleet, because these will be hit again here.
   A plain C++ CLI has no Cocoa init, and *window* capture asserts with
   `CGS_REQUIRE_INIT` while *display* capture works — only the window path
   reaches that code, so this looks like a window-capture bug and is not.
+- **Windows display work needs the signed-in session.** Session 0 (ssh, a
+  service) has no displays: every display API answers empty and
+  DuplicateOutput fails. Run benches through `tools/winlab/s1run.ps1`, which
+  wraps a command in an Interactive-logon scheduled task.
+- **Map the duplicated frame before ReleaseFrame, and keep `timeBeginPeriod(1)`.**
+  With both wrong, the node took 16 new pictures a second on winlab where raw
+  duplication took 30 (fixed together, so neither is pinned down alone), and
+  without the 1 ms timer every `sleep_until` lands on 15.6 ms steps.
+- **VDD renumbers its displays on every reload.** Hold a VDD display by the
+  `UIDnnn` connector in its device path, never by `\\.\DISPLAYn`.
 - **ScreenCaptureKit sends idle samples with no image** when the screen has not
   changed. Check `SCStreamFrameInfoStatus` for `SCFrameStatusComplete`, or a
   static desktop reads as a live source delivering at full rate.

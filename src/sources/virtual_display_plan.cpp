@@ -1,5 +1,6 @@
 // The OS-free half of the virtual display: what to create, decided where a
-// test can reach it. The display itself is in virtual_display.mm.
+// test can reach it. The display itself is in virtual_display.mm (macOS) and
+// virtual_display_win.cpp (Windows).
 #include <cmath>
 
 #include "sources/virtual_display.h"
@@ -19,10 +20,40 @@ uint32_t serialFor(const std::string& name) {
   return h == 0 ? 1 : h;
 }
 
+/// "about one frame every 7 hours", for a drift of one frame in `seconds`.
+std::string everySentence(double seconds) {
+  if (seconds < 120) {
+    return "about one frame every " +
+           std::to_string(static_cast<long>(std::lround(seconds))) +
+           " seconds";
+  }
+  if (seconds < 2 * 3600) {
+    return "about one frame every " +
+           std::to_string(static_cast<long>(std::lround(seconds / 60))) +
+           " minutes";
+  }
+  return "about one frame every " +
+         std::to_string(static_cast<long>(std::lround(seconds / 3600))) +
+         " hours";
+}
+
 }  // namespace
+
+VirtualDisplayHost currentVirtualDisplayHost() {
+#if defined(_WIN32)
+  return VirtualDisplayHost::windowsVdd;
+#else
+  return VirtualDisplayHost::macos;
+#endif
+}
 
 bool planVirtualDisplay(const NodeConfig& config, VirtualDisplayPlan* out,
                         std::string& error) {
+  return planVirtualDisplayFor(currentVirtualDisplayHost(), config, out, error);
+}
+
+bool planVirtualDisplayFor(VirtualDisplayHost host, const NodeConfig& config,
+                           VirtualDisplayPlan* out, std::string& error) {
   VirtualDisplayPlan plan;
 
   plan.name = !config.target.empty() ? config.target
@@ -59,15 +90,28 @@ bool planVirtualDisplay(const NodeConfig& config, VirtualDisplayPlan* out,
     return false;
   }
   const double hz = config.rate.approx();
+  const bool fractional = config.rate.num % config.rate.den != 0;
+
+  // Both hosts run whole rates only. CGVirtualDisplay takes a whole number.
+  // VDD (25.7.23) offers no fractional mode at all: with 59.9401 in its
+  // settings, Windows lists no 59 Hz mode and refuses one with BADMODE
+  // (measured on winlab). Its Driver.cpp works a mode's pixel rate out in
+  // 32-bit arithmetic, which overflows at any four-place rate; that is the
+  // likely reason. So a fractional rate runs at the whole rate above it.
   plan.refreshHz = static_cast<int>(std::ceil(hz - 1e-6));
-  if (config.rate.num % config.rate.den != 0) {
+  plan.refresh = Rate{plan.refreshHz, 1};
+  if (host == VirtualDisplayHost::windowsVdd) {
+    plan.vddRefresh = std::to_string(plan.refreshHz);
+  }
+  if (fractional) {
     plan.warning =
-        "macOS runs a virtual display at a whole rate, so this " +
-        config.rate.label() + " display runs at " +
-        std::to_string(plan.refreshHz) +
-        " Hz and its capture drops about one frame every " +
-        std::to_string(static_cast<int>(std::lround(1.0 / (plan.refreshHz - hz)))) +
-        " seconds. A whole rate (25, 30, 50, 60) has no drop.";
+        std::string(host == VirtualDisplayHost::macos
+                        ? "macOS runs a virtual display at a whole rate"
+                        : "VDD runs its displays at whole rates only") +
+        ", so this " + config.rate.label() + " display runs at " +
+        std::to_string(plan.refreshHz) + " Hz and its capture drops " +
+        everySentence(1.0 / (plan.refreshHz - hz)) +
+        ". A whole rate (25, 30, 50, 60) has no drop.";
   }
 
   plan.serial = serialFor(plan.name);

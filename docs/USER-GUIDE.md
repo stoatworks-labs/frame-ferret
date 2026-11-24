@@ -18,11 +18,13 @@ sink, and the crosspoint in the middle doesn't care which is which.
 > real Duo 2**: 2531 frames with zero late and zero dropped by the card's own count, though the
 > pixels on the wire haven't been checked.
 >
-> **Experimental:** the macOS virtual display (private API; see below).
+> **Experimental:** the virtual display, on macOS (private API) and on Windows (on a signed
+> driver you install); see below.
 >
 > **Not started:** the UVC virtual camera, DeckLink capture, Spout, HTML
-> output, and ST 2110 audio and ancillary. Windows and Linux build and self-test in CI but **have
-> never been run interactively, and no hardware path exists on either.**
+> output, and ST 2110 audio and ancillary. Windows and Linux build and self-test in CI. On
+> Windows, screen capture and the virtual display have run on a VM; **nothing else has run
+> interactively on either, and no hardware path exists on them.**
 >
 > This codebase was created with AI assistance, directed and reviewed by a human author.
 
@@ -72,8 +74,10 @@ fault, and that's an expensive hour. Every node takes an interface.
 | **ST 2110-20 send and receive** | Verified against GStreamer's RFC 4175 implementation, within 2 code values. |
 | **DeckLink output** | Run on a real Duo 2 at 1080p50 in v210. |
 | **Screen, window, application and region capture** (macOS) | Built and run. A region of interest is a source rect, so a crop costs nothing. |
+| **Screen and region capture** (Windows) | Built and run on a Windows VM, with Desktop Duplication. Window and application capture aren't written for Windows yet. |
 | **Syphon output** (macOS) | Verified against Resolume's Syphon — a different implementation from the one vendored here. |
 | **Virtual display** (macOS, experimental) | A display other software can output to, sent out over any sink. Run with Resolume Arena's Advanced Output into OMT. Private API — see below. |
+| **Virtual display** (Windows, experimental) | The same, on VirtualDrivers' signed display driver, which you install once. Run on a Windows VM into NDI. On main, not in a release yet — see below. |
 | **Desktop launcher** | Shipped since v0.1.1. Pick an interface and a port, press Start, and it opens the control page. Closing its window hides it to the tray (the menu bar on a Mac) and leaves the engine running. |
 
 ---
@@ -145,12 +149,58 @@ can be sent anywhere Frame Ferret sends. `config/virtual-display.json` is the st
 
 ---
 
+## The virtual display on Windows (experimental)
+
+**Not in v0.3.0.** It's on main and comes with the next release.
+
+Windows won't load a display driver Microsoft hasn't signed, so Frame Ferret doesn't bring one.
+It uses VirtualDrivers' **Virtual Display Driver** (VDD), which is free, MIT-licensed and signed,
+and which you install once:
+
+1. Install VDD, from
+   [its releases](https://github.com/VirtualDrivers/Virtual-Display-Driver/releases) or with
+   `winget install --id=VirtualDrivers.Virtual-Display-Driver -e`. It adds a display called
+   "VDD by MTT".
+2. In Settings > System > Display, make sure the displays are set to "Extend these displays".
+3. Run a config with a `virtual-display` node. `config/virtual-display.json` sends it out over
+   OMT; on Windows only NDI has been tried so far, so change that sink's `kind` to `ndi` if you
+   want the tested route.
+
+When the node starts, it claims the first VDD display that no other `virtual-display` node is
+using and sets it to the node's width, height and rate. Then it captures it, and keeps following
+it if Windows renumbers it. If VDD doesn't list that mode, Frame Ferret adds it to VDD's settings
+file (`C:\VirtualDisplayDriver\vdd_settings.xml`, marked "added by Frame Ferret") and reloads
+VDD. **A reload takes every VDD display away for about a second**, so set modes up before a show,
+not during one. After the first run the mode is listed and no reload is needed.
+
+How it differs from the Mac:
+
+- **The display is VDD's, not Frame Ferret's.** It's there whether Frame Ferret runs or not, and
+  Windows and other software call it "VDD by MTT"; `target` only names it in Frame Ferret's own
+  messages. For two virtual displays, raise `<count>` under `<monitors>` in VDD's settings file.
+- **It has to run in the signed-in desktop.** There's no permission prompt, but there are no
+  displays at all for a service or an ssh session, and none while the screen is locked.
+- **Use a whole rate** (25, 30, 50, 60). VDD lists 59.94, but Windows never offers that mode, so
+  a 59.94 display runs at 60 and Frame Ferret warns that its capture will drop about one frame
+  every 17 seconds.
+- The pointer isn't captured, and an HDR or rotated display is refused with a sentence saying so.
+- **A VDD reload during capture broke VDD once in three tries** on the test VM. The log then says
+  "VDD has stopped"; see the table at the end.
+
+What it has been run on: a Windows 11 VM with no GPU, sending 1080p60 over NDI to a separate
+receiver. That gave 60 frames a second delivered, nothing out of order and the bars within one
+level, but only 27 *new* pictures a second, because that VM's desktop composes only about 40
+times a second. A machine with a graphics card should do better; that hasn't been measured. It
+hasn't been run with Resolume on Windows yet.
+
+---
+
 ## What is not built
 
 Designed and documented, but not implemented: the UVC virtual camera (it needs an embedded
-provisioning profile the release harness doesn't produce yet), the Windows virtual display (an
-IddCx driver needs attestation signing), DeckLink capture, Spout, HTML output, and ST 2110-30
-audio and -40 ancillary.
+provisioning profile the release harness doesn't produce yet), window and application capture
+on Windows (they need Windows.Graphics.Capture), DeckLink capture, Spout, HTML output, and ST
+2110-30 audio and -40 ancillary.
 
 They're left out of the UI rather than sitting there failing.
 
@@ -167,4 +217,8 @@ They're left out of the UI rather than sitting there failing.
 | **A node type is missing** | Run `frame-ferret kinds`. Several are designed but not built — see above. |
 | **The virtual display says "never made it active" or "no CGVirtualDisplay"** | The first is the window server refusing it, usually right after a macOS update; restart Frame Ferret. The second means this macOS no longer has the private classes. |
 | **The virtual display is in Resolume but the output is black** | The Resolume screen isn't enabled, or the sink isn't routed to the display. A missing Screen Recording permission stops the node with a sentence rather than sending black. |
-| **It does nothing on Windows or Linux** | Both build and self-test in CI and have never been run interactively. No hardware path exists on either. |
+| **The Windows virtual display says VDD is not installed** | Install VirtualDrivers' Virtual Display Driver (above). Frame Ferret doesn't bring a display driver of its own. |
+| **It says VDD's display "is not part of the desktop"** | Settings > System > Display: choose "Extend these displays". During a VDD reload this is normal for about a second. |
+| **The log says "VDD has stopped"** | VDD's device has failed, which a VDD reload during capture did once in three tries on the test VM. In Device Manager, Display adapters > Virtual Display Driver: Disable device, then Enable device. The capture picks the display up again. |
+| **A Windows capture says it needs the signed-in desktop** | It's running as a service, from an ssh session, or while the screen is locked or a UAC prompt is up. Display capture only works in the signed-in user's session. |
+| **Something else does nothing on Windows or Linux** | Apart from screen capture and the virtual display on Windows, both have only built and self-tested in CI. No hardware path exists on either. |

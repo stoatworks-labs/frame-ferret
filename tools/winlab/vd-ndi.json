@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "The Windows bench route: VDD's display, captured by the virtual-display",
+    "node and sent out as the NDI source 'HOST (Virtual Display)', which",
+    "vdbench probe receives in another process. Run by vd-ndi.cmd."
+  ],
+  "rate": "60",
+  "control": { "bind": "127.0.0.1", "port": 8740 },
+  "nodes": [
+    {
+      "id": "screen",
+      "kind": "virtual-display",
+      "target": "Frame Ferret Display",
+      "width": 1920,
+      "height": 1080,
+      "rate": "60"
+    },
+    {
+      "id": "ndiout",
+      "kind": "ndi",
+      "target": "Virtual Display",
+      "width": 1920,
+      "height": 1080,
+      "rate": "60"
+    },
+    { "id": "monitor", "kind": "preview", "width": 1280, "height": 720 }
+  ],
+  "routes": { "ndiout": "screen", "monitor": "screen" }
+}

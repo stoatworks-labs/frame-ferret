@@ -1,10 +1,12 @@
 {
   "_comment": [
-    "A virtual display sent out over OMT. 'Frame Ferret Display' appears in",
-    "System Settings > Displays and in any application that outputs to a",
+    "A virtual display sent out over OMT. On macOS 'Frame Ferret Display'",
+    "appears in System Settings > Displays (on Windows, VDD's display is",
+    "'VDD by MTT') and in any application that outputs to a",
     "display (Resolume's Advanced Output, a media server, a browser full",
     "screen); whatever is drawn on it goes out as the OMT source",
-    "'HOST (Virtual Display)'. macOS only, private API: see",
+    "'HOST (Virtual Display)'. On macOS it is private API; on Windows",
+    "it is a display of VirtualDrivers' VDD, installed once. See",
     "docs/03-os-extensions.md."
   ],
   "rate": "60",

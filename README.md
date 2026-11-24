@@ -4,7 +4,7 @@
 > (Anthropic), directed and reviewed by a human author. Every transport that's built has been
 > checked against an implementation that isn't this code, and DeckLink output has run on a real
 > Duo 2. The UVC virtual camera, Spout, DeckLink capture, HTML output and 2110
-> audio and ancillary aren't written yet; the macOS virtual display is built and experimental. The details, including what each check was against,
+> audio and ancillary aren't written yet; the virtual display is built and experimental on macOS and Windows. The details, including what each check was against,
 > are under [Status](#status).
 
 A virtual capture card, in software. It's one application that acts as an **NDI, OMT, SRT and
@@ -76,12 +76,14 @@ grows.
 | **ST 2110-20 send and receive** | **Built and verified against GStreamer's RFC 4175 implementation**, both directions, within 2 code values. Wide-profile sender, system-clocked — see below |
 | ST 2110-30 audio, -40 ancillary | **Not started** |
 | **Display, window, application and ROI capture** (macOS) | **Built and run.** ScreenCaptureKit; region of interest is a source rect, so a crop costs nothing |
+| **Display and ROI capture** (Windows) | **Built and run on a Windows VM.** DXGI Desktop Duplication, followed across renumbering. Window and application capture aren't written for Windows (they need Windows.Graphics.Capture) |
 | UVC virtual camera | **Not started.** Needs an embedded provisioning profile, which the fleet's release harness does not yet produce — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
-| **Virtual display** (macOS) | **Built, experimental — private API.** A real display other apps can output to; route it to any sink. Run with Resolume Arena's Advanced Output into an OMT sender: 60.0 fps, no frame out of order, bars within 3 levels. Windows (IddCx) not started — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
+| **Virtual display** (macOS) | **Built, experimental — private API.** A real display other apps can output to; route it to any sink. Run with Resolume Arena's Advanced Output into an OMT sender: 60.0 fps, no frame out of order, bars within 3 levels — see [docs/03-os-extensions.md](docs/03-os-extensions.md) |
+| **Virtual display** (Windows) | **Built, experimental — on a signed driver you install.** Frame Ferret ships no driver; it claims a display of VirtualDrivers' Virtual Display Driver (VDD), sets its mode and captures it. Run on a GPU-less Windows 11 VM into an NDI sender: 60.1 fps received by a separate process, no frame out of order, bars within 1 level, but only 27 new pictures a second, because that VM's desktop composes about 40. Whole rates only. Never run on a machine with a GPU, or with Resolume on Windows |
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
 | Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It's a window plus a tray icon (in the menu bar on a Mac): closing the window hides it to the tray and leaves the engine running |
-| Windows, Linux | **Built and self-tested by CI**, all three platforms green. Never run interactively, and no hardware path exists on any of them |
+| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM (above); nothing else has run interactively on either, and no hardware path exists on them |
 
 ### What has actually been observed
 
@@ -187,6 +189,24 @@ And a plain C++ CLI has to call `NSApplicationLoad()` before touching CoreGraphi
 capture asserted with `CGS_REQUIRE_INIT` on first run while *display* capture worked, because only
 the window path reaches that code.
 
+**The virtual display, on Windows.** On winlab, a Windows 11 VM with no GPU (Microsoft Basic
+Render Driver, two cores), with VDD 25.7.23 installed. A separate bench process put a counter test
+card full screen on VDD's display and judged what came back:
+
+| Route | Delivered | New pictures | Out of order | Bars |
+| --- | --- | --- | --- | --- |
+| Node in-process, 1080p60 | latest frame | 28.9 a second | none | exact |
+| Node → NDI sender → another process, 1080p60 | 60.1 fps | 26.9 a second | none | within 1 level |
+| Raw Desktop Duplication on the same display (no Frame Ferret) | — | 29.6 a second | — | — |
+
+The ceiling is the VM, not the node: its desktop composes only about 40 times a second, and the
+copy to memory takes the rest out of two cores that DWM is also rendering on in software. A mode
+VDD didn't list (1600x900 at 30) was added to its settings, VDD reloaded, and the capture
+followed the renumbered display. **59.94 can't be had:** VDD lists the mode, but Windows never
+offers it (asked for, it's `BADMODE`), so a fractional rate runs at the whole rate above it and
+says so. A VDD reload during capture broke VDD's device once in three tries; restarting it in
+Device Manager brought the display back and the capture picked it up.
+
 **ST 2110-20, both directions, against an independent implementation.** GStreamer's
 `rtpvrawdepay` decoded 143 frames of Frame Ferret's stream with a worst channel error of **1 code
 value**; Frame Ferret decoded 196 frames from GStreamer's `rtpvrawpay` within **2**. ST 2110-20 is
@@ -215,6 +235,10 @@ everything downstream:
   node and nothing else. Window and application capture cover dragging an app onto a surface;
   the virtual display is for software that can only output to a display, such as Resolume's
   Advanced Output. [docs/03-os-extensions.md](docs/03-os-extensions.md)
+- **A display on Windows needs a driver Microsoft has signed**, and signing one needs an EV
+  certificate and a Partner Center account. So Frame Ferret drives VirtualDrivers' Virtual Display
+  Driver (MIT, signed through the SignPath Foundation), which you install once, rather than ship
+  an unsigned driver nobody could load.
 
 <!-- downloads:start -->
 

@@ -138,7 +138,8 @@ bool buildNodes(const AppConfig& config, Engine& engine,
           failures.push_back({node.id, reason});
           continue;
         }
-        // Captured with ScreenCaptureKit: BGRA, full range.
+        // ScreenCaptureKit (macOS) or Desktop Duplication (Windows): BGRA,
+        // full range.
         engine.addSource(std::move(source), PixelFormat::bgra8);
         ++built;
         break;

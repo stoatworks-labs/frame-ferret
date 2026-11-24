@@ -54,6 +54,13 @@ target_include_directories(ferret_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(WIN32)
   target_link_libraries(ferret_core PUBLIC iphlpapi ws2_32)
+  # Display capture (Desktop Duplication) and the virtual display, which
+  # drives VirtualDrivers' signed VDD driver: see docs/03-os-extensions.md.
+  target_sources(ferret_core PRIVATE
+    src/sources/windows_displays.cpp
+    src/sources/screen_capture_win.cpp
+    src/sources/virtual_display_win.cpp)
+  target_link_libraries(ferret_core PUBLIC d3d11 dxgi winmm)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -181,6 +188,10 @@ target_link_libraries(frame-ferret PRIVATE ferret_core)
 if(APPLE)
   target_link_libraries(frame-ferret PRIVATE "-framework CoreFoundation")
 elseif(WIN32)
+  # The bench proof for the Windows virtual display: a counter test card and
+  # a reader for it (tools/vdbench/vdbench.cpp, run by tools/winlab).
+  add_executable(vdbench tools/vdbench/vdbench.cpp)
+  target_link_libraries(vdbench PRIVATE ferret_core user32 gdi32)
   # dbghelp is for the vendored diag's crash backtrace (SymInitialize /
   # SymFromAddr). WebLinked hit exactly this and it is easy to miss because
   # nothing else in the tree references it — the only symptom is LNK2019 at the
