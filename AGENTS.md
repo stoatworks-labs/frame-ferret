@@ -151,18 +151,31 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   Fractional rates are not possible on VDD. `docs/03-os-extensions.md` has the
   run, the numbers and the traps; `tools/winlab/*.cmd` reproduce it.
 
+- **OMT on Windows, both directions, run on winlab against `omttest` on a Mac
+  (2026-11-26)** — through SSH tunnels, because the Mac was off winlab's
+  network. omttest's 1080p60 counter card → Frame Ferret's OMT receiver on
+  Windows → its OMT sender → `omttest --probe` on the Mac: 0 out of order,
+  upright, bars within 2.0 levels, 16.6 pictures a second (the in-leg alone
+  gave 20.7 distinct a second by `vdbench probe`: the tunnel and two cores,
+  not the node). The first independent sender into the OMT receiver. NDI
+  between machines and OMT over a LAN are still unrun on Windows; winlab's
+  firewall (a Public network) drops discovery and inbound connections to a
+  freshly built exe.
+
 - **The signed macOS builds load NDI and OMT — from v0.3.0's re-sign on.**
   Every earlier signed Mac build, CLI and launcher alike, could not: see the
   library-validation trap below.
 
 **Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
-Spout, the HTML output, both virtual cameras, and window and application
-capture on Windows. Do not describe any of it as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
+Spout, the HTML output, both virtual cameras, window and application
+capture on Windows, and the Windows half of `core/subprocess` — so **SRT cannot
+run on Windows**: both SRT nodes report "running one is not implemented on this
+platform yet". Do not describe any of it as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
-conversion, pacing — they have genuinely *run* it, not merely compiled. On Windows, display capture
-and the virtual display have also run interactively on winlab (above); nothing
+conversion, pacing — they have genuinely *run* it, not merely compiled. On Windows, display capture,
+the virtual display and OMT have also run interactively on winlab (above); nothing
 else has on either, neither has a GPU path, and no hardware backend exists on
 any platform. Treat "the synthetic path runs on all three" as the claim for
 everything else.

@@ -13,7 +13,8 @@ sink, and the crosspoint in the middle doesn't care which is which.
 
 > **Before you rely on this:** a lot works and a lot isn't built yet, and the difference matters
 > more here than in most projects. **NDI and OMT both work in both directions**, verified against
-> separate implementations. **SRT send and receive are verified end to end**, and ST 2110-20 is
+> separate implementations. **SRT send and receive are verified end to end** (on macOS; SRT
+> doesn't run on Windows yet), and ST 2110-20 is
 > verified against GStreamer's implementation in both directions. **DeckLink output has run on a
 > real Duo 2**: 2531 frames with zero late and zero dropped by the card's own count, though the
 > pixels on the wire haven't been checked.
@@ -23,8 +24,9 @@ sink, and the crosspoint in the middle doesn't care which is which.
 >
 > **Not started:** the UVC virtual camera, DeckLink capture, Spout, HTML
 > output, and ST 2110 audio and ancillary. Windows and Linux build and self-test in CI. On
-> Windows, screen capture and the virtual display have run on a VM; **nothing else has run
-> interactively on either, and no hardware path exists on them.**
+> Windows, screen capture and the virtual display have run on a VM, and OMT has run both ways
+> between that VM and a Mac; SRT doesn't run there yet. **Nothing else has run interactively
+> on either, and no hardware path exists on them.**
 >
 > This codebase was created with AI assistance, directed and reviewed by a human author.
 
@@ -69,8 +71,8 @@ fault, and that's an expensive hour. Every node takes an interface.
 | | |
 |---|---|
 | **NDI send and receive** | Verified against an independent implementation, both directions. |
-| **OMT send and receive** | Verified against oxbow and macOS's own `dns-sd`. |
-| **SRT send and receive** | Verified end to end against an independent Rust SRT stack. |
+| **OMT send and receive** | Verified against oxbow and macOS's own `dns-sd`. On Windows, run both ways against a separate OMT implementation on a Mac. |
+| **SRT send and receive** (macOS) | Verified end to end against an independent Rust SRT stack. **Not on Windows yet** — see below. |
 | **ST 2110-20 send and receive** | Verified against GStreamer's RFC 4175 implementation, within 2 code values. |
 | **DeckLink output** | Run on a real Duo 2 at 1080p50 in v210. |
 | **Screen, window, application and region capture** (macOS) | Built and run. A region of interest is a source rect, so a crop costs nothing. |
@@ -110,6 +112,10 @@ Frame Ferret runs **ffmpeg as a subprocess** rather than linking it:
   hand would be far more fragile than NDI, OMT or libsrt, which all expose flat C ABIs on purpose.
 - **Licensing stays simple.** A separate process over a pipe doesn't raise any question an MIT
   codebase needs to answer.
+
+**Not on Windows yet.** Starting ffmpeg as a subprocess is written for macOS and Linux only, so
+on Windows an SRT node says *SRT needs an external codec, and running one is not implemented on
+this platform yet*, whichever ffmpeg you have.
 
 Hardware encoders are used where there are any.
 
@@ -213,7 +219,7 @@ They're left out of the UI rather than sitting there failing.
 | **A stream is on the wrong NIC** | Every node takes an interface — except NDI, whose API has no such parameter. Check for the warning. |
 | **A sink is black but running** | Nothing is routed to it. That is the invariant, not a fault. |
 | **Blue reads 178 over NDI** | NDI's compression. Independent senders land on the same number. |
-| **SRT does nothing** | It needs an ffmpeg. Check the resolution order above; a wrong explicit path is an error rather than a silent fallback. |
+| **SRT does nothing** | It needs an ffmpeg. Check the resolution order above; a wrong explicit path is an error rather than a silent fallback. On Windows it can't run yet at all: the node says running a codec "is not implemented on this platform yet". |
 | **A node type is missing** | Run `frame-ferret kinds`. Several are designed but not built — see above. |
 | **The virtual display says "never made it active" or "no CGVirtualDisplay"** | The first is the window server refusing it, usually right after a macOS update; restart Frame Ferret. The second means this macOS no longer has the private classes. |
 | **The virtual display is in Resolume but the output is black** | The Resolume screen isn't enabled, or the sink isn't routed to the display. A missing Screen Recording permission stops the node with a sentence rather than sending black. |
@@ -221,4 +227,4 @@ They're left out of the UI rather than sitting there failing.
 | **It says VDD's display "is not part of the desktop"** | Settings > System > Display: choose "Extend these displays". During a VDD reload this is normal for about a second. |
 | **The log says "VDD has stopped"** | VDD's device has failed, which a VDD reload during capture did once in three tries on the test VM. In Device Manager, Display adapters > Virtual Display Driver: Disable device, then Enable device. The capture picks the display up again. |
 | **A Windows capture says it needs the signed-in desktop** | It's running as a service, from an ssh session, or while the screen is locked or a UAC prompt is up. Display capture only works in the signed-in user's session. |
-| **Something else does nothing on Windows or Linux** | Apart from screen capture and the virtual display on Windows, both have only built and self-tested in CI. No hardware path exists on either. |
+| **Something else does nothing on Windows or Linux** | Apart from screen capture, the virtual display and OMT on Windows, both have only built and self-tested in CI. No hardware path exists on either. |

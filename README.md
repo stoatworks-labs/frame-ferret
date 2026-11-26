@@ -4,7 +4,7 @@
 > (Anthropic), directed and reviewed by a human author. Every transport that's built has been
 > checked against an implementation that isn't this code, and DeckLink output has run on a real
 > Duo 2. The UVC virtual camera, Spout, DeckLink capture, HTML output and 2110
-> audio and ancillary aren't written yet; the virtual display is built and experimental on macOS and Windows. The details, including what each check was against,
+> audio and ancillary aren't written yet, and SRT doesn't run on Windows yet; the virtual display is built and experimental on macOS and Windows. The details, including what each check was against,
 > are under [Status](#status).
 
 A virtual capture card, in software. It's one application that acts as an **NDI, OMT, SRT and
@@ -67,10 +67,10 @@ grows.
 | Web control page + JSON API | **Built and driven in a browser.** Crosspoint clicks verified against the API |
 | CLI (`run`, `selftest`, `interfaces`, `kinds`) | **Runs** |
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
-| **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded |
+| **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded. On Windows, run both ways against a separate OMT implementation on a Mac — see below |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. The SRT node built on it is in the next two rows |
-| **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly |
-| **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools |
+| **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Not on Windows yet:** there the node can't start ffmpeg, and says so |
+| **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools. **Not on Windows yet**, for the same reason |
 | **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
 | **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
 | **ST 2110-20 send and receive** | **Built and verified against GStreamer's RFC 4175 implementation**, both directions, within 2 code values. Wide-profile sender, system-clocked — see below |
@@ -83,7 +83,7 @@ grows.
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
 | Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It's a window plus a tray icon (in the menu bar on a Mac): closing the window hides it to the tray and leaves the engine running |
-| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM (above); nothing else has run interactively on either, and no hardware path exists on them |
+| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM, and OMT has run both ways between that VM and a Mac (above). SRT doesn't run on Windows yet. Nothing else has run interactively on either, and no hardware path exists on them |
 
 ### What has actually been observed
 
@@ -125,6 +125,11 @@ SRT carries an MPEG transport stream of *compressed* video, so it needs a codec.
 - **Licensing stays simple.** ffmpeg is LGPL and commonly built as GPL with libx264. A separate
   process over a pipe doesn't raise any question an MIT codebase needs to answer.
 - **CI keeps building**, with no ffmpeg on the runners and nothing to detect.
+
+**Not on Windows yet.** Starting that subprocess is written for macOS and Linux only. On Windows
+an SRT node reports *SRT needs an external codec, and running one is not implemented on this
+platform yet* and stays unavailable, whichever ffmpeg and `srt.dll` are installed. That was seen
+on winlab with ffmpeg 8.1 and libsrt 1.5.6 both in place.
 
 Hardware encoders win where there are any; on this Mac it picks `h264_videotoolbox` over
 `libx264`.
@@ -206,6 +211,19 @@ followed the renumbered display. **59.94 can't be had:** VDD lists the mode, but
 offers it (asked for, it's `BADMODE`), so a fractional rate runs at the whole rate above it and
 says so. A VDD reload during capture broke VDD's device once in three tries; restarting it in
 Device Manager brought the display back and the capture picked it up.
+
+**OMT on Windows, against a separate implementation.** The same VM, with resolume-omt's
+`omttest` on a Mac at the other end. The Mac was away from the VM's network that day, so both
+directions went through SSH tunnels. `omttest`'s 1080p60 counter card went into Frame Ferret's
+OMT receiver on Windows and back out of its OMT sender to `omttest --probe` on the Mac: no frame
+out of order, the right way up, and the bars within 2 levels, the same as reading the card
+directly. It's also the first time Frame Ferret's OMT *receiver* has been fed by something
+other than Frame Ferret.
+
+Only 16.6 pictures a second made it back. On the way in alone, a bench on the VM counted 20.7
+distinct pictures a second while Frame Ferret's engine held 59.9 fps, so that's the tunnel and
+two cores, not a product number. NDI between two machines, and OMT over a real network, haven't
+been run on Windows yet.
 
 **ST 2110-20, both directions, against an independent implementation.** GStreamer's
 `rtpvrawdepay` decoded 143 frames of Frame Ferret's stream with a worst channel error of **1 code
