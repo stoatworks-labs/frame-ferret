@@ -1,5 +1,6 @@
 #include "transports/omt.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -8,6 +9,7 @@
 #include <mutex>
 
 #include "core/convert.h"
+#include "core/discovery.h"
 #include "core/dylib.h"
 #include "transports/omt_abi.h"
 
@@ -416,24 +418,28 @@ std::vector<std::string> omtListSources(std::string& error) {
     return out;
   }
 
-  // Poll, don't ask once.
+  // Listen for a window, don't ask once.
   //
   // libomt's discovery browser starts on the first call and has learned
   // nothing at that moment, so a single call reliably returns zero even when
   // senders are plainly on the network — confirmed with macOS's own
   // `dns-sd -B _omt._tcp`, which listed a sender this function was returning
-  // nothing for. NDI has the same shape and gives you
-  // NDIlib_find_wait_for_sources for it; OMT exposes no wait, so poll.
-  for (int attempt = 0; attempt < 20; ++attempt) {
-    int count = 0;
-    char** addresses = g_api.discovery_getaddresses(&count);
-    if (addresses && count > 0) {
-      for (int i = 0; i < count; ++i) {
-        if (addresses[i]) out.emplace_back(addresses[i]);
-      }
-      return out;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // nothing for. Stopping at the first answer would have NDI's problem: that
+  // is this machine's own senders, known before any other machine's (seen with
+  // NDI, see core/discovery.h). OMT exposes no wait, so sleep in steps.
+  int count = 0;
+  g_api.discovery_getaddresses(&count);  // starts the browser
+  waitForDiscovery(
+      std::chrono::milliseconds(2000), DiscoveryClock::now,
+      [](std::chrono::milliseconds ms) {
+        std::this_thread::sleep_for(
+            std::min(ms, std::chrono::milliseconds(100)));
+      },
+      nullptr);
+  count = 0;
+  char** addresses = g_api.discovery_getaddresses(&count);
+  for (int i = 0; addresses && i < count; ++i) {
+    if (addresses[i]) out.emplace_back(addresses[i]);
   }
   return out;
 }

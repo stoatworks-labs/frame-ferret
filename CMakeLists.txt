@@ -28,6 +28,7 @@ add_library(ferret_core STATIC
   src/core/pixel_format.cpp
   src/core/rational.cpp
   src/core/convert.cpp
+  src/core/discovery.cpp
   src/sources/test_pattern.cpp
   src/sources/screen_capture_stub.cpp
   src/sources/virtual_display_plan.cpp
@@ -206,7 +207,7 @@ endif()
 # ---------------------------------------------------------------------------
 enable_testing()
 
-foreach(t router rational pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt st2110 virtual_display)
+foreach(t router rational discovery pixel_format interfaces convert config engine web_assets ndi_abi omt_abi srt st2110 virtual_display)
   add_executable(test_${t} tests/test_${t}.cpp)
   target_link_libraries(test_${t} PRIVATE ferret_core)
   # So a test can assert on the source of a transport it cannot otherwise

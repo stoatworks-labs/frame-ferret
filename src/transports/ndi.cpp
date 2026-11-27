@@ -1,10 +1,12 @@
 #include "transports/ndi.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
 
 #include "core/convert.h"
+#include "core/discovery.h"
 #include "core/dylib.h"
 #include "transports/ndi_abi.h"
 
@@ -39,6 +41,10 @@ struct Api {
   void (*send_send_video_v2)(void*, const VideoFrameV2*) = nullptr;
   void (*send_send_audio_v3)(void*, const AudioFrameV3*) = nullptr;
 };
+
+// How long a receiver listens for its source before the node fails. Only a
+// source that never appears waits all of it.
+constexpr unsigned kReceiverDiscoveryMs = 5000;
 
 Dylib g_lib;
 Api g_api;
@@ -453,9 +459,16 @@ std::vector<std::string> ndiListSources(unsigned waitMs, std::string& error) {
     return out;
   }
 
-  // Discovery needs a moment before its first answer means anything — asking
-  // immediately reliably returns nothing on a network that has plenty.
-  g_api.find_wait_for_sources(finder, waitMs);
+  // Listen for the whole window. find_wait_for_sources returns at the first
+  // change, which is this machine's own senders, so one call listed only them
+  // with a sender on another machine plainly on the network: see
+  // core/discovery.h.
+  waitForDiscovery(
+      std::chrono::milliseconds(waitMs), DiscoveryClock::now,
+      [finder](std::chrono::milliseconds ms) {
+        g_api.find_wait_for_sources(finder, (uint32_t)ms.count());
+      },
+      nullptr);
 
   uint32_t count = 0;
   const SourceRef* sources = g_api.find_get_current_sources(finder, &count);
@@ -479,29 +492,51 @@ std::unique_ptr<Source> makeNdiSource(const NodeConfig& config,
     return nullptr;
   }
 
-  g_api.find_wait_for_sources(finder, 2000);
+  // Keep listening until the source turns up or the window closes. One wait
+  // stops at the first change, which is nearly always a sender on this
+  // machine, so a source on another machine was missed whenever there was a
+  // local one: 3 runs in 5 on a Windows VM, with its own NDI output as the
+  // local sender. Found sources end the wait at once, so the window only
+  // costs anything when the source really isn't there.
   uint32_t count = 0;
-  const SourceRef* sources = g_api.find_get_current_sources(finder, &count);
-
+  const SourceRef* sources = nullptr;
   const SourceRef* chosen = nullptr;
-  for (uint32_t i = 0; i < count; ++i) {
-    if (!sources[i].p_ndi_name) continue;
-    if (config.target.empty()) {
-      chosen = &sources[i];
-      break;
+  auto pick = [&] {
+    sources = g_api.find_get_current_sources(finder, &count);
+    chosen = nullptr;
+    for (uint32_t i = 0; i < count; ++i) {
+      if (!sources[i].p_ndi_name) continue;
+      if (config.target.empty() ||
+          std::string(sources[i].p_ndi_name).find(config.target) !=
+              std::string::npos) {
+        chosen = &sources[i];
+        break;
+      }
     }
-    if (std::string(sources[i].p_ndi_name).find(config.target) !=
-        std::string::npos) {
-      chosen = &sources[i];
-      break;
-    }
-  }
+    return chosen != nullptr;
+  };
+  waitForDiscovery(
+      std::chrono::milliseconds(kReceiverDiscoveryMs), DiscoveryClock::now,
+      [finder](std::chrono::milliseconds ms) {
+        g_api.find_wait_for_sources(finder, (uint32_t)ms.count());
+      },
+      pick);
 
   if (!chosen) {
+    // Name what was seen: "1 found" alone sent the LAN run looking at the
+    // network when the one source was this machine's own.
+    std::string seen;
+    for (uint32_t i = 0; i < count && i < 8; ++i) {
+      if (!sources[i].p_ndi_name) continue;
+      seen += (seen.empty() ? ": " : ", ") + std::string(sources[i].p_ndi_name);
+    }
     error = config.target.empty()
-                ? "no NDI sources are visible on the network"
+                ? "no NDI sources are visible on the network after " +
+                      std::to_string(kReceiverDiscoveryMs / 1000) + " s"
                 : "no NDI source matching \"" + config.target +
-                      "\" is visible (" + std::to_string(count) + " found)";
+                      "\" is visible after " +
+                      std::to_string(kReceiverDiscoveryMs / 1000) + " s (" +
+                      std::to_string(count) + " found" + seen + ")";
     g_api.find_destroy(finder);
     return nullptr;
   }

@@ -32,14 +32,14 @@ class NdiRuntime {
   static const char* downloadUrl();
 };
 
-/// Sources visible on the network right now. `waitMs` is how long to let
-/// discovery settle — NDI's finder needs a moment before its first answer is
-/// meaningful.
+/// Sources visible on the network after listening for `waitMs`. All of it is
+/// waited: NDI's first answer is only this machine's own senders.
 std::vector<std::string> ndiListSources(unsigned waitMs, std::string& error);
 
 /// A receiver. `config.target` is matched as a substring against the full NDI
 /// source name ("MACHINE (Source)"), so "Mixer" finds "GALLERY (Mixer Out 1)".
-/// An empty target connects to the first source found.
+/// An empty target connects to the first source found. It listens up to 5 s
+/// for a match and stops as soon as one appears.
 std::unique_ptr<Source> makeNdiSource(const NodeConfig& config,
                                       std::string& error);
 

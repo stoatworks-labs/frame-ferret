@@ -173,16 +173,17 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   Fractional rates are not possible on VDD. `docs/03-os-extensions.md` has the
   run, the numbers and the traps; `tools/winlab/*.cmd` reproduce it.
 
-- **OMT on Windows, both directions, run on winlab against `omttest` on a Mac
-  (2026-11-26)** — through SSH tunnels, because the Mac was off winlab's
-  network. omttest's 1080p60 counter card → Frame Ferret's OMT receiver on
-  Windows → its OMT sender → `omttest --probe` on the Mac: 0 out of order,
-  upright, bars within 2.0 levels, 16.6 pictures a second (the in-leg alone
-  gave 20.7 distinct a second by `vdbench probe`: the tunnel and two cores,
-  not the node). The first independent sender into the OMT receiver. NDI
-  between machines and OMT over a LAN are still unrun on Windows; winlab's
-  firewall (a Public network) drops discovery and inbound connections to a
-  freshly built exe.
+- **NDI, OMT and SRT, both directions, between winlab and a Mac over a LAN
+  (2026-11-27)**, the v0.5.0 Windows release as downloaded, every leg judged on
+  the Mac by code that isn't this: omttest's 1080p60 counter card, oxbow for
+  NDI, `srt-live-transmit` and ffmpeg for SRT. OMT round trip 51.2 fps, 0 out
+  of order, bars 2.0 (56.0 fps by name, ~9 s to first picture). NDI round trip
+  57.2 fps, 0 out of order, bars 16 — oxbow's NDI round trip on the Mac alone
+  is 13, so Windows adds ~3. SRT in: NDI copy 30.0 fps, bars 2.0. SRT out
+  (`libx264`) recorded on the Mac: 0 out of order, bars 1.0, 12487 packets over
+  Wi-Fi, 2 lost and resent. winlab is a Public network and needed a temporary
+  inbound rule for the Mac's address, removed after. An earlier OMT run through
+  SSH tunnels (2026-11-26) got the same bars at 16.6 fps.
 
 - **The signed macOS builds load NDI and OMT — from v0.3.0's re-sign on.**
   Every earlier signed Mac build, CLI and launcher alike, could not: see the
@@ -386,6 +387,17 @@ Carried forward from the fleet, because these will be hit again here.
   never polls, never connects, never polls. Invisible to synthetic sources,
   which report connected from construction. Pinned by
   `aSourceThatConnectsOnlyWhenPolledStillWorks`.
+- **`NDIlib_find_wait_for_sources` returns at the FIRST change, not after its
+  timeout**, and the first change is this machine's own senders. One wait then
+  a pick misses every source on another machine whenever a local one exists —
+  3 runs in 5 on winlab (its own NDI output was the local one), every run on a
+  Mac with NDI Tools' AV Output up. `waitForDiscovery` (core/discovery.h)
+  listens until the source appears or the window closes; pinned by
+  test_discovery. libomt's discovery has the same shape.
+- **A killed NDI sender's name outlives it on the Mac for up to 75 minutes.**
+  `taskkill /f` sends no mDNS goodbye, mDNSResponder keeps the PTR (TTL 4500 s),
+  and libndi lists one name per ip:port, so the NEXT sender on that port shows
+  under the dead one's name. `dns-sd -B _ndi._tcp` shows the truth.
 - **A transport node's direction comes from the routes, not its kind.** `ndi`
   can be either, so the control API asks the engine which it was actually built
   as; inferring from the kind renders an NDI receiver as a sink too.

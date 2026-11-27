@@ -66,11 +66,11 @@ grows.
 | Test-pattern source, preview sink | **Built and run** |
 | Web control page + JSON API | **Built and driven in a browser.** Crosspoint clicks verified against the API |
 | CLI (`run`, `selftest`, `interfaces`, `kinds`) | **Runs** |
-| **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
-| **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded. On Windows, run both ways against a separate OMT implementation on a Mac — see below |
+| **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked. On Windows, run both ways between a VM and a Mac over a LAN — see below |
+| **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded. On Windows, run both ways between a VM and a Mac over a LAN, against a separate OMT implementation — see below |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. The SRT node built on it is in the next two rows |
-| **SRT receive (decode)** | **Built and verified end to end on macOS** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Run on Windows too**, since v0.5.0, on a GPU-less Windows 11 VM, fed by ffmpeg's own libsrt: two 40-second runs read by a separate process, 1201 frames each at 30.0 fps, no frame out of order, bars within 1 level. On Linux it's built and unit-tested in CI, never run |
-| **SRT send (encode)** | **Built and verified end to end on macOS** — all eight bars within 2 code values through H.264, read back by independent tools. **Run on the same Windows VM**: encoded with `libx264`, recorded by ffmpeg's own libsrt, no frame out of order, bars within 1 level, 9837 packets sent and none lost. On Linux, CI only |
+| **SRT receive (decode)** | **Built and verified end to end on macOS** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Run on Windows too**, since v0.5.0, on a GPU-less Windows 11 VM, fed by ffmpeg's own libsrt: two 40-second runs read by a separate process, 1201 frames each at 30.0 fps, no frame out of order, bars within 1 level. Also run from a Mac over a LAN, fed by libsrt's `srt-live-transmit` — see below. On Linux it's built and unit-tested in CI, never run |
+| **SRT send (encode)** | **Built and verified end to end on macOS** — all eight bars within 2 code values through H.264, read back by independent tools. **Run on the same Windows VM**: encoded with `libx264`, recorded by ffmpeg's own libsrt, no frame out of order, bars within 1 level, 9837 packets sent and none lost. Also run to a Mac over a LAN. On Linux, CI only |
 | **External codec via ffmpeg** | **Built and verified, on macOS and Windows.** Points at an install you already have; nothing linked, nothing bundled. An encoder has to open a one-frame trial before it's chosen, so a listed GPU encoder with no GPU behind it is skipped |
 | **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
 | **ST 2110-20 send and receive** | **Built and verified against GStreamer's RFC 4175 implementation**, both directions, within 2 code values. Wide-profile sender, system-clocked — see below |
@@ -83,7 +83,7 @@ grows.
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
 | Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It's a window plus a tray icon (in the menu bar on a Mac): closing the window hides it to the tray and leaves the engine running |
-| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM, OMT has run both ways between that VM and a Mac, and SRT both ways on the VM itself (above). Nothing else has run interactively on either, and no hardware path exists on them |
+| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM, and NDI, OMT and SRT have run both ways between that VM and a Mac over a LAN (below). Nothing else has run interactively on either, and no hardware path exists on them |
 
 ### What has actually been observed
 
@@ -194,7 +194,7 @@ Getting there fixed two faults. A read that timed out partway through a frame th
 had read. That was true on every platform, but only the VM showed it: in each run before the fix,
 one picture came out rolled before the stream fell back into step. And on Windows, libsrt crashed
 the process on exit unless it had been shut down first. SRT on Windows has never run on a machine
-with a GPU, or between two machines.
+with a GPU. It has run between that VM and a Mac: see below.
 
 SRT receive takes about six seconds to show its first picture, on macOS and Windows alike. That's
 ffmpeg examining the stream before it decodes anything, and it was the same before this change.
@@ -253,18 +253,36 @@ offers it (asked for, it's `BADMODE`), so a fractional rate runs at the whole ra
 says so. A VDD reload during capture broke VDD's device once in three tries; restarting it in
 Device Manager brought the display back and the capture picked it up.
 
-**OMT on Windows, against a separate implementation.** The same VM, with resolume-omt's
-`omttest` on a Mac at the other end. The Mac was away from the VM's network that day, so both
-directions went through SSH tunnels. `omttest`'s 1080p60 counter card went into Frame Ferret's
-OMT receiver on Windows and back out of its OMT sender to `omttest --probe` on the Mac: no frame
-out of order, the right way up, and the bars within 2 levels, the same as reading the card
-directly. It's also the first time Frame Ferret's OMT *receiver* has been fed by something
-other than Frame Ferret.
+**NDI, OMT and SRT between Windows and a Mac.** The same VM, running the v0.5.0 release as
+downloaded, with a Mac on the same network at the other end. Every leg was judged on the Mac by
+code that isn't Frame Ferret's: resolume-omt's `omttest` served a 1080p60 counter card and read
+it back, oxbow carried it to and from NDI, and libsrt's `srt-live-transmit` and ffmpeg did SRT.
 
-Only 16.6 pictures a second made it back. On the way in alone, a bench on the VM counted 20.7
-distinct pictures a second while Frame Ferret's engine held 59.9 fps, so that's the tunnel and
-two cores, not a product number. NDI between two machines, and OMT over a real network, haven't
-been run on Windows yet.
+| | Into Windows | Back to the Mac | Read on the Mac |
+|---|---|---|---|
+| OMT | Frame Ferret's OMT receiver | its OMT sender | 51.2 fps, no frame out of order, bars within 2 levels |
+| NDI | its NDI receiver, from oxbow | its NDI sender, to oxbow | 57.2 fps, no frame out of order, bars within 16 levels |
+| SRT | its SRT listener, from `srt-live-transmit` | an NDI copy of the decoded picture | 30.0 fps, no frame out of order, bars within 2 levels |
+| SRT | the same | a second SRT listener, `libx264`, recorded by ffmpeg | no frame out of order, bars within 1 level; 12487 packets over Wi-Fi, 2 lost and both resent |
+
+The 16 levels over NDI are mostly NDI's compression of saturated blue (above): oxbow's own NDI
+round trip on the Mac, with no Windows in it, loses 13. OMT found the Mac's sender by name as
+well as by address, at 56.0 fps, but took about 9 s to the first picture rather than under one.
+The SRT recording has a repeated picture for every skipped one, as on the VM alone. The rates are
+a VM with two cores on Wi-Fi, not product numbers. Windows blocks inbound connections to a
+program with no firewall rule on a Public network, so for this run the VM had a temporary rule
+letting the Mac reach `frame-ferret.exe`. An earlier OMT run, through SSH tunnels while the Mac
+was away, got the same bars at 16.6 fps.
+
+**It found a fault in the NDI receiver, fixed after v0.5.0.** NDI's finder reports the list of
+sources as soon as it changes, and the first change is this machine's own senders, known before
+any answer from another machine. Frame Ferret waited once and picked from that, so a source on
+another machine was missed whenever this machine had an NDI sender of its own: 3 runs in 5 on the
+VM, where Frame Ferret's own NDI output was that sender. A receiver now keeps listening for up to
+5 seconds and stops as soon as its source appears, and the error names what it did see. On a Mac
+running NDI Tools' macOS AV Output, v0.5.0 missed a sender started a second late in 3 runs of 3,
+and the fix found it in 3 of 3. `sources --protocol ndi` and `--protocol omt` now listen for
+their whole 2 seconds for the same reason. That's on main, not in a release yet.
 
 **ST 2110-20, both directions, against an independent implementation.** GStreamer's
 `rtpvrawdepay` decoded 143 frames of Frame Ferret's stream with a worst channel error of **1 code

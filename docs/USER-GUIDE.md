@@ -24,9 +24,9 @@ sink, and the crosspoint in the middle doesn't care which is which.
 >
 > **Not started:** the UVC virtual camera, DeckLink capture, Spout, HTML
 > output, and ST 2110 audio and ancillary. Windows and Linux build and self-test in CI. On
-> Windows, screen capture, the virtual display and SRT have run on a VM, and OMT has run both
-> ways between that VM and a Mac. **Nothing else has run interactively on either, and no
-> hardware path exists on them.**
+> Windows, screen capture and the virtual display have run on a VM, and NDI, OMT and SRT have
+> run both ways between that VM and a Mac. **Nothing else has run interactively on either, and
+> no hardware path exists on them.**
 >
 > This codebase was created with AI assistance, directed and reviewed by a human author.
 
@@ -70,9 +70,9 @@ fault, and that's an expensive hour. Every node takes an interface.
 
 | | |
 |---|---|
-| **NDI send and receive** | Verified against an independent implementation, both directions. |
-| **OMT send and receive** | Verified against oxbow and macOS's own `dns-sd`. On Windows, run both ways against a separate OMT implementation on a Mac. |
-| **SRT send and receive** | Verified end to end on macOS against an independent Rust SRT stack. Run on a Windows VM against ffmpeg's own libsrt: 40-second runs both ways, no frame out of order, bars within 1 level. On Windows since v0.5.0. On Linux it's built and unit-tested, never run. |
+| **NDI send and receive** | Verified against an independent implementation, both directions. On Windows, run both ways between a VM and a Mac. |
+| **OMT send and receive** | Verified against oxbow and macOS's own `dns-sd`. On Windows, run both ways between a VM and a Mac, against a separate OMT implementation. |
+| **SRT send and receive** | Verified end to end on macOS against an independent Rust SRT stack. Run on a Windows VM against ffmpeg's own libsrt, and between that VM and a Mac: no frame out of order, bars within 1 level. On Windows since v0.5.0. On Linux it's built and unit-tested, never run. |
 | **ST 2110-20 send and receive** | Verified against GStreamer's RFC 4175 implementation, within 2 code values. |
 | **DeckLink output** | Run on a real Duo 2 at 1080p50 in v210. |
 | **Screen, window, application and region capture** (macOS) | Built and run. A region of interest is a source rect, so a crop costs nothing. |
@@ -237,6 +237,8 @@ They're left out of the UI rather than sitting there failing.
 | **SRT receive is black for the first few seconds** | ffmpeg examines the start of the stream before it decodes anything. About six seconds, on macOS and Windows alike. |
 | **The log says an encoder "is listed but would not open"** | That machine's ffmpeg offers it, but its GPU or driver isn't there. Frame Ferret moves on to the next encoder; nothing to fix unless you wanted that one. |
 | **An SRT sink with an `"encoder"` setting won't start** | The encoder you named didn't open, and a named encoder is never swapped for another. The error has ffmpeg's reason. |
+| **An NDI receiver says no source matching your name is visible** | It listened for 5 seconds and the sender never appeared; the message lists what it did see. Check the name, and that the sending machine's firewall lets it be reached. Up to v0.5.0 a receiver could also miss a sender on another machine whenever this machine had an NDI sender of its own; that's fixed after v0.5.0. |
+| **Another machine can't see or reach a sender on Windows** | Windows Firewall blocks inbound connections to a program it has no rule for. Allow `frame-ferret.exe` inbound, at least from the machines that receive from it. |
 | **A node type is missing** | Run `frame-ferret kinds`. Several are designed but not built — see above. |
 | **The virtual display says "never made it active" or "no CGVirtualDisplay"** | The first is the window server refusing it, usually right after a macOS update; restart Frame Ferret. The second means this macOS no longer has the private classes. |
 | **The virtual display is in Resolume but the output is black** | The Resolume screen isn't enabled, or the sink isn't routed to the display. A missing Screen Recording permission stops the node with a sentence rather than sending black. |
@@ -244,4 +246,4 @@ They're left out of the UI rather than sitting there failing.
 | **It says VDD's display "is not part of the desktop"** | Settings > System > Display: choose "Extend these displays". During a VDD reload this is normal for about a second. |
 | **The log says "VDD has stopped"** | VDD's device has failed, which a VDD reload during capture did once in three tries on the test VM. In Device Manager, Display adapters > Virtual Display Driver: Disable device, then Enable device. The capture picks the display up again. |
 | **A Windows capture says it needs the signed-in desktop** | It's running as a service, from an ssh session, or while the screen is locked or a UAC prompt is up. Display capture only works in the signed-in user's session. |
-| **Something else does nothing on Windows or Linux** | Apart from screen capture, the virtual display, OMT and SRT on Windows, both have only built and self-tested in CI. No hardware path exists on either. |
+| **Something else does nothing on Windows or Linux** | Apart from screen capture, the virtual display, NDI, OMT and SRT on Windows, both have only built and self-tested in CI. No hardware path exists on either. |

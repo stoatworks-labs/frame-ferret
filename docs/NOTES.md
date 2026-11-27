@@ -162,9 +162,30 @@ Traps from it:
   FreeLibrary()s during static destruction; that alone did NOT fix it.
 - **SRT receive takes ~6 s to its first picture** ("N bytes in, 0 frames out")
   — ffmpeg's input probing, same on macOS and on main before this. Not fixed.
-- winlab: `vdbench probe` looks for the NDI source ONCE for 2 s — retry on "no
-  NDI receiver" only. It saves `%TEMP%\ffvd\bad.bmp` only if that folder
+- winlab: `vdbench probe` looked for the NDI source ONCE for 2 s (it uses
+  `makeNdiSource`), so it needed retries on "no NDI receiver"; since the
+  discovery fix below it listens up to 5 s. It saves `%TEMP%\ffvd\bad.bmp` only if that folder
   exists. The kit is `C:\build\ffx` (srt.dll + OpenSSL DLLs beside the exe).
+
+**NDI, OMT AND SRT BETWEEN winlab AND A MAC, OVER A LAN** (2026-11-27, v0.5.0 release
+zip on winlab, Mac on Wi-Fi). Numbers are in the README. What it took and taught:
+- winlab is a Public network, firewall on; a temporary inbound rule
+  (program = the release exe, RemoteAddress = the Mac) was added with Allan's OK
+  and removed after.
+- **The NDI receiver lost a discovery race** — `NDIlib_find_wait_for_sources`
+  returns at the first CHANGE, which is local senders. `makeNdiSource` waited
+  once (2000) and picked: "no NDI source matching … (1 found)", the one being its
+  own NDI output. Fixed with `waitForDiscovery` (src/core/discovery.*): listen
+  until a match or 5 s; listings (`sources`) listen their whole 2 s. Reproduced
+  on the Mac without winlab: a sender started 1 s after the receiver, NDI Tools'
+  AV Output already up — v0.5.0 failed 3/3, the fix found it 3/3.
+- oxbow has the same one-shot wait (`ndiListSources`); the judge was a scratch
+  copy with the loop. oxbow's own fix is separate.
+- Stale mDNS names: see AGENTS (taskkill /f → no goodbye → 75 min PTR → libndi
+  shows the new sender on that port under the old name).
+- NDI `ndi.networks.ips` works through `NDI_CONFIG_DIR` (`{"ndi":{"networks":
+  {"ips":"…"}}}`) when multicast discovery is flaky; not needed once the race
+  was understood.
 
 **TWO COLOUR BUGS FOUND BY SRT SEND — both left hues and bar ORDER perfect while
 values were wrong, which reads as "nearly working":**
