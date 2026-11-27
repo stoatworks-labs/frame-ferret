@@ -64,6 +64,9 @@ struct TraceStats {
   int pktSentNAKTotal;
   int pktRecvNAKTotal;
   int64_t usSndDurationTotal;
+  // Added in 1.3 directly after usSndDurationTotal, and unmoved since.
+  int pktSndDropTotal;
+  int pktRcvDropTotal;
   // The remainder is deliberately unread; see srtStats().
   char tail[4096];
 };
@@ -175,6 +178,17 @@ bool loadRuntime(std::string& error) {
     return false;
   }
 
+#ifdef _WIN32
+  // libsrt must be shut down while its own threads are still alive. Left to
+  // the DLL's static destructors, it is torn down after ExitProcess has
+  // already killed its garbage-collector thread, and the process dies on the
+  // way out with 0xC0000409 — every test passed, then the binary "crashed".
+  // atexit runs before ExitProcess, so srt_cleanup can still join that thread.
+  std::atexit([] {
+    if (g_api.cleanup) g_api.cleanup();
+  });
+#endif
+
   g_ok = true;
   return true;
 }
@@ -281,6 +295,7 @@ class Connection : public SrtConnection {
     out.packetsReceived = raw.pktRecvTotal;
     out.packetsLost = raw.pktSndLossTotal + raw.pktRcvLossTotal;
     out.packetsRetransmitted = raw.pktRetransTotal;
+    out.packetsDropped = raw.pktSndDropTotal + raw.pktRcvDropTotal;
     out.negotiatedLatencyMs = config_.latencyMs;
     // Rates and RTT live further into the struct, past the point where the
     // layout is stable between libsrt releases. Left at zero rather than read

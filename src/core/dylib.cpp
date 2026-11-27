@@ -184,14 +184,13 @@ void Dylib::close() {
   if (handle_ == nullptr) {
     return;
   }
-#if defined(_WIN32)
-  FreeLibrary(static_cast<HMODULE>(handle_));
-#else
-  // Deliberately *not* dlclosed on POSIX. Both libndi and libomt start worker
-  // threads; unloading the code those threads are executing during shutdown is
-  // a race we cannot win, and leaking one handle for the life of the process
-  // costs nothing.
-#endif
+  // Deliberately never unloaded, on any platform. libndi, libomt and libsrt all
+  // start worker threads; unloading the code those threads are executing
+  // during shutdown is a race we cannot win, and leaking one handle for the
+  // life of the process costs nothing.
+  //
+  // Windows used to FreeLibrary here. The libraries live in globals, so that
+  // ran during static destruction, with their threads still running.
   handle_ = nullptr;
   loadedPath_.clear();
 }

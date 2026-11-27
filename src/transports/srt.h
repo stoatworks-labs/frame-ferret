@@ -30,9 +30,12 @@ std::unique_ptr<Source> makeSrtSource(const NodeConfig& config,
 /// An SRT sink: frames encoded to H.264 and muxed to MPEG-TS by an external
 /// ffmpeg, then sent over SRT.
 ///
-/// The encoder is chosen by `Ffmpeg::bestH264Encoder`, hardware first — on
-/// Apple silicon that is `h264_videotoolbox`, which matters because the frame
-/// loop is already serving every other sink from one thread.
+/// The encoder is the node's `encoder` setting if it has one, used as given.
+/// Otherwise `Ffmpeg::pickH264Encoder` chooses, hardware first — on Apple
+/// silicon that is `h264_videotoolbox`, which matters because the frame loop
+/// is already serving every other sink from one thread — and proves each
+/// candidate with a one-frame trial encode, because ffmpeg lists hardware
+/// encoders it was built with whether or not this machine can open them.
 ///
 /// `config.target` is the same SRT URL the source takes. A sender usually
 /// wants `mode=listener`, so decoders call in to it; that is independent of

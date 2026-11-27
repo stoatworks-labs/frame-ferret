@@ -86,6 +86,11 @@ class SrtConnection {
     int64_t packetsReceived = 0;
     int64_t packetsLost = 0;
     int64_t packetsRetransmitted = 0;
+    /// Packets the receiver gave up on: they arrived (or were recovered) too
+    /// late for the latency window, so the stream has a hole where they were.
+    /// Lost-and-retransmitted packets are harmless; dropped ones are what
+    /// shows up as a damaged picture.
+    int64_t packetsDropped = 0;
     double roundTripMs = 0.0;
     double sendRateMbps = 0.0;
     double receiveRateMbps = 0.0;

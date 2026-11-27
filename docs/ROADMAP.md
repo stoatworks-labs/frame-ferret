@@ -64,10 +64,9 @@ Still to do here: a ten-minute soak, and audio actually verified.
   `$FERRET_FFMPEG`, `$PATH`, then the usual locations). That avoids the ABI
   fragility of mirroring AVCodecContext, keeps ffmpeg's GPL in a separate
   process, and leaves CI with nothing to detect. `core/subprocess.*` and
-  `transports/ffmpeg.*` are built and verified; hardware encoders are preferred
-  where present. **Not on Windows:** `core/subprocess.*` is POSIX-only, so
-  there both SRT nodes report that running a codec is not implemented on this
-  platform. It needs CreateProcess and pipes.
+  `transports/ffmpeg.*` are built and verified on macOS and have run on Windows
+  (winlab). A hardware encoder is preferred, but only one that opens a
+  one-frame trial encode; a node's `"encoder"` setting overrides the choice.
 
   **Both directions done and verified.** Receive against `tools/srtsend` (built
   on srt-tokio, an independent SRT stack); send by pulling the stream with

@@ -35,6 +35,10 @@ inline int g_checks = 0;
 
 #define TEST_MAIN(name)                                                   \
   int main() {                                                            \
+    /* Unbuffered, so a test that crashes still shows how far it got:  */ \
+    /* to a pipe or file the MSVC runtime buffers everything, and a    */ \
+    /* crash then leaves no output at all.                              */ \
+    std::setvbuf(stdout, nullptr, _IONBF, 0);                             \
     std::printf("%s\n", name);                                            \
     run();                                                                \
     std::printf("%s: %d checks, %d failed\n", name, ferret_test::g_checks,\

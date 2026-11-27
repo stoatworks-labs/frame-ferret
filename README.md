@@ -4,7 +4,7 @@
 > (Anthropic), directed and reviewed by a human author. Every transport that's built has been
 > checked against an implementation that isn't this code, and DeckLink output has run on a real
 > Duo 2. The UVC virtual camera, Spout, DeckLink capture, HTML output and 2110
-> audio and ancillary aren't written yet, and SRT doesn't run on Windows yet; the virtual display is built and experimental on macOS and Windows. The details, including what each check was against,
+> audio and ancillary aren't written yet; the virtual display is built and experimental on macOS and Windows. The details, including what each check was against,
 > are under [Status](#status).
 
 A virtual capture card, in software. It's one application that acts as an **NDI, OMT, SRT and
@@ -69,9 +69,9 @@ grows.
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded. On Windows, run both ways against a separate OMT implementation on a Mac — see below |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. The SRT node built on it is in the next two rows |
-| **SRT receive (decode)** | **Built and verified end to end** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Not on Windows yet:** there the node can't start ffmpeg, and says so |
-| **SRT send (encode)** | **Built and verified end to end** — all eight bars within 2 code values through H.264, read back by independent tools. **Not on Windows yet**, for the same reason |
-| **External codec via ffmpeg** | **Built and verified.** Points at an install you already have; nothing linked, nothing bundled |
+| **SRT receive (decode)** | **Built and verified end to end on macOS** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Run on Windows too**, on a GPU-less Windows 11 VM, fed by ffmpeg's own libsrt: two 40-second runs read by a separate process, 1201 frames each at 30.0 fps, no frame out of order, bars within 1 level. On Linux it's built and unit-tested in CI, never run |
+| **SRT send (encode)** | **Built and verified end to end on macOS** — all eight bars within 2 code values through H.264, read back by independent tools. **Run on the same Windows VM**: encoded with `libx264`, recorded by ffmpeg's own libsrt, no frame out of order, bars within 1 level, 9837 packets sent and none lost. On Linux, CI only |
+| **External codec via ffmpeg** | **Built and verified, on macOS and Windows.** Points at an install you already have; nothing linked, nothing bundled. An encoder has to open a one-frame trial before it's chosen, so a listed GPU encoder with no GPU behind it is skipped |
 | **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
 | **ST 2110-20 send and receive** | **Built and verified against GStreamer's RFC 4175 implementation**, both directions, within 2 code values. Wide-profile sender, system-clocked — see below |
 | ST 2110-30 audio, -40 ancillary | **Not started** |
@@ -83,7 +83,7 @@ grows.
 | **Syphon output** (macOS) | **Built and verified against Resolume's Syphon 5** — a different implementation from the Syphon 6 sources vendored here |
 | DeckLink capture, Spout, HTML output | **Not started** |
 | Desktop launcher | **Shipped since v0.1.1** (ba8856f). The fleet's av-launcher shell with the binary embedded: pick an interface and a port, press Start, and it opens the control page. `.dmg` on macOS, NSIS installer on Windows, `.deb`/`.rpm` on Linux. It's a window plus a tray icon (in the menu bar on a Mac): closing the window hides it to the tray and leaves the engine running |
-| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM, and OMT has run both ways between that VM and a Mac (above). SRT doesn't run on Windows yet. Nothing else has run interactively on either, and no hardware path exists on them |
+| Windows, Linux | **Built and self-tested by CI**, all three platforms green. On Windows, display capture and the virtual display have also run in a signed-in session of a VM, OMT has run both ways between that VM and a Mac, and SRT both ways on the VM itself (above). Nothing else has run interactively on either, and no hardware path exists on them |
 
 ### What has actually been observed
 
@@ -126,13 +126,25 @@ SRT carries an MPEG transport stream of *compressed* video, so it needs a codec.
   process over a pipe doesn't raise any question an MIT codebase needs to answer.
 - **CI keeps building**, with no ffmpeg on the runners and nothing to detect.
 
-**Not on Windows yet.** Starting that subprocess is written for macOS and Linux only. On Windows
-an SRT node reports *SRT needs an external codec, and running one is not implemented on this
-platform yet* and stays unavailable, whichever ffmpeg and `srt.dll` are installed. That was seen
-on winlab with ffmpeg 8.1 and libsrt 1.5.6 both in place.
+Your ffmpeg doesn't need SRT support. Frame Ferret does the SRT itself, with libsrt, and hands
+ffmpeg only the transport stream, over a pipe.
 
-Hardware encoders win where there are any; on this Mac it picks `h264_videotoolbox` over
-`libx264`.
+**Hardware encoders win, but only ones that open.** ffmpeg lists `h264_nvenc` and `h264_qsv`
+whether or not there's a GPU or a driver behind them, so the list proves nothing. Each candidate
+(`h264_videotoolbox`, `h264_nvenc`, `h264_qsv`, `libx264`, `h264_v4l2m2m`, in that order) first
+encodes one black frame to nowhere, with the same settings the sink will use, and the first to
+succeed is chosen. The ones that fail are logged with ffmpeg's own reason. On this Mac it picks
+`h264_videotoolbox`. On the Windows VM, which has no GPU, it logs these two lines and uses
+`libx264`:
+
+```
+srt: h264_nvenc is listed but would not open (Cannot load nvcuda.dll)
+srt: h264_qsv is listed but would not open (Error creating a MFX session: -9.)
+```
+
+To choose one yourself, give the sink an `"encoder"` setting, such as `"encoder": "libx264"`. An
+encoder you name is used as given. If it won't open, the node fails with ffmpeg's reason rather
+than quietly using another one.
 
 **SRT receive, verified end to end.** Nothing already on the machine could act as a sender.
 Homebrew's ffmpeg has no SRT compiled in, `srt-file-transmit` speaks SRT's *stream* API (which the
@@ -157,6 +169,35 @@ values were wrong, which is the sneakiest way a colour fault can show up:
 - **Matrix.** rawvideo carries no colorimetry, so ffmpeg guesses **BT.601 below 720 lines**.
   Sending it 709 data at 640x360 without saying so skewed every saturated colour while white and
   black stayed exact. Both input and output are now tagged explicitly.
+
+**SRT on Windows, run on a VM.** Up to v0.4.0 the ffmpeg subprocess was POSIX-only, and an SRT
+node on Windows refused to build. It now runs ffmpeg with `CreateProcess` and pipes; that isn't in
+a release yet. It was run on the GPU-less Windows 11 VM used for the virtual display, all on one
+machine over loopback, with ffmpeg 8.1's own libsrt at both ends. ffmpeg sent a 720p30 recording of a frame-counter card into
+an SRT listener. Frame Ferret decoded it and sent it out twice: over NDI, read by a probe in a
+separate process, and over a second SRT listener, encoded with `libx264` and recorded by ffmpeg
+to be judged afterwards. Two 40-second runs:
+
+| | First run | Second run |
+|---|---|---|
+| Received, read over NDI | 1201 frames at 30.0 fps; 1147 new pictures | 1201 frames at 30.0 fps; 906 new pictures |
+| Sent, recorded by ffmpeg | 889 frames of the card; 839 new | 886 frames of the card; 666 new |
+| Both ways | Counter never went backwards, every frame upright, bars within 1 level | The same |
+| The send link | 9837 packets, 0 lost, 0 retransmitted, 0 dropped | The same |
+
+Not every tick got a new picture. Every repeat is matched by a skip, so the frames did arrive,
+just not one per tick on that VM. Why the second run had more of those is not known. Each recording
+starts with half a second of black sent before the decoded input arrived; that's the invariant,
+not a fault.
+
+Getting there fixed two faults. A read that timed out partway through a frame threw away what it
+had read. That was true on every platform, but only the VM showed it: in each run before the fix,
+one picture came out rolled before the stream fell back into step. And on Windows, libsrt crashed
+the process on exit unless it had been shut down first. SRT on Windows has never run on a machine
+with a GPU, or between two machines.
+
+SRT receive takes about six seconds to show its first picture, on macOS and Windows alike. That's
+ffmpeg examining the stream before it decodes anything, and it was the same before this change.
 
 SRT is the **only transport here that can actually bind to a chosen interface**: `srt_bind()`
 takes a real address, where NDI and OMT have no such parameter at all.

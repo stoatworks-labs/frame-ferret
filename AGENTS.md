@@ -13,7 +13,8 @@ it is the whole mental model.
 This section is the most important one in the file. Keep it honest, and never
 upgrade "compiles" to "works".
 
-**Built, tested and run on this machine** — 769 checks across 12 binaries (run 2026-10-12):
+**Built, tested and run on this machine** — 922 checks across 15 binaries (run 2026-11-27; the
+interfaces suite's count depends on the machine, 73 here):
 
 - The crosspoint `Router` and its plan-every-sink invariant — 36 checks.
 - Exact rational rates, tick deadlines and the drift property — 40 checks,
@@ -25,6 +26,13 @@ upgrade "compiles" to "works".
 - The `Engine` frame loop — 95 checks, driven through a real running engine
   rather than through `Router::plan()` alone.
 - Config parsing and its rejections — 57 checks.
+- The ffmpeg subprocess, POSIX and Windows — 46 checks against the test binary
+  re-run as its own child: argument quoting, a 6 MB round trip, exit codes,
+  stderr, a record that has started being finished, and a later child not
+  holding an earlier child's pipes (proven to fail without close-on-exec).
+- Choosing an H.264 encoder — 57 checks, against a fake ffmpeg whose
+  `h264_nvenc` and `h264_qsv` are listed but fail the way they do on a machine
+  with no GPU, and against the real ffmpeg when there is one.
 - Interface enumeration and selector resolution — 81 checks (count is
   machine-dependent; the suite walks real interfaces). The `interfaces` command
   has been run and checked against `ifconfig`, including confirming a Wi-Fi
@@ -62,6 +70,20 @@ and refuses `file://` at both ends. See `tools/srtsend/README.md`.
 **SRT send is verified too**: encoded with `h264_videotoolbox`, muxed to
 MPEG-TS, pulled off with `srt-live-transmit` and decoded by ffmpeg — all eight
 bars within 2 code values through a lossy H.264 round trip.
+
+**SRT on Windows has run on winlab, both ways** (2026-11-27; in no release
+yet). One GPU-less VM, loopback only, ffmpeg n8.1's own libsrt at both ends:
+ffmpeg sent a 720p30 counter card into a listener; Frame Ferret decoded it and
+sent it on over NDI to `vdbench probe` in a separate process, and over a second
+listener encoded with `libx264`, recorded by ffmpeg and judged afterwards with
+vdbench's rules. Two 40 s runs. Received: 1201 frames at 30.0 fps each, 1147
+and 906 new pictures. Sent: 889 and 886 frames of the card, 839 and 666 new.
+Both ways, both runs: counter never backwards, upright, bars within 1 level.
+The send link: 9837 packets, 0 lost, 0 retransmitted, 0 dropped. Every repeat
+is matched by a skip, so frames arrived but not one per tick; why the second run
+had more is not known. The encoder pick skipped `h264_nvenc` ("Cannot load
+nvcuda.dll") and `h264_qsv` ("Error creating a MFX session: -9.") and chose
+`libx264`. **Never run between two machines, or on a machine with a GPU.**
 
 Note SRT **can** bind to a chosen interface — `srt_bind()` takes a real address
 and there is SRTO_BINDTODEVICE — which makes it the first transport here where
@@ -167,17 +189,15 @@ proven to reject the 10.11 copy inside the NDI SDK's examples.
   library-validation trap below.
 
 **Not written at all.** ST 2110-30 audio and -40 ancillary, DeckLink *capture*,
-Spout, the HTML output, both virtual cameras, window and application
-capture on Windows, and the Windows half of `core/subprocess` — so **SRT cannot
-run on Windows**: both SRT nodes report "running one is not implemented on this
-platform yet". Do not describe any of it as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
+Spout, the HTML output, both virtual cameras, and window and application
+capture on Windows. Do not describe any of it as working. The tray launcher is built: it shipped in v0.1.1 (ba8856f).
 
 **Windows and Linux: built and self-tested by CI**, all three platforms green.
 Because the CI `selftest` step drives the whole frame path — generator, router,
 conversion, pacing — they have genuinely *run* it, not merely compiled. On Windows, display capture,
-the virtual display and OMT have also run interactively on winlab (above); nothing
-else has on either, neither has a GPU path, and no hardware backend exists on
-any platform. Treat "the synthetic path runs on all three" as the claim for
+the virtual display, OMT and SRT have also run interactively on winlab (above);
+nothing else has on either, neither has a GPU path, and no hardware backend
+exists on any platform. Treat "the synthetic path runs on all three" as the claim for
 everything else.
 
 ## Nodes can be added and removed while running
@@ -296,6 +316,25 @@ Carried forward from the fleet, because these will be hit again here.
 - **A Duo 2's sub-device pairs each have their own profile manager**, and a
   pair in `1dfd` leaves its second sub-device refusing both input and output
   while still listing a full set of display modes. Reads as broken hardware.
+- **A listed encoder proves nothing.** ffmpeg lists `h264_nvenc` and
+  `h264_qsv` on a machine with no GPU behind them (winlab lists both and opens
+  neither), so a pick that trusts the listing chooses one that cannot open. `Ffmpeg::pickH264Encoder`
+  trial-encodes one black frame with the sink's own arguments to `-f null -`;
+  exit 0 is the proof. An explicit `"encoder"` is never fallen back from.
+- **`readExactly` finishes a record it has started.** It used to give up at its
+  deadline partway through a frame and drop what it had read, which put the
+  stream out of step: one rolled picture (256 rows, 655,360 bytes),
+  then a silent realignment at the next gap. The deadline is for a record to
+  BEGIN; a begun one gets two seconds more. Shared by both platforms, seen only
+  on winlab. Pinned by `aRecordThatHasStartedIsFinished`.
+- **No child may inherit another child's pipe ends.** A later ffmpeg holding an
+  earlier one's stdin write end means the earlier one never sees EOF. Windows
+  passes only the child's own three handles (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`);
+  POSIX marks every pipe fd `FD_CLOEXEC` under a spawn mutex. Pinned by
+  `aLaterChildDoesNotHoldAnEarlierChildsPipes`.
+- **On Windows, shut libsrt down before the process exits.** Without
+  `srt_cleanup()` (an `atexit` in `srt_socket.cpp`) `test_srt` passed all its
+  checks and then died with 0xC0000409 on the way out.
 - **Never link NDI at build time.** Runtime-load it. A cross-compiled target
   otherwise ships with NDI silently disabled, which is what happened to
   openstage for every release until someone checked.

@@ -90,6 +90,12 @@ struct NodeConfig {
   /// back from — see Ffmpeg::locate.
   std::string ffmpegPath;
 
+  /// Which ffmpeg encoder an SRT sender uses. Empty lets Frame Ferret choose:
+  /// hardware first, each candidate proven with a one-frame trial encode. A
+  /// name (any encoder ffmpeg lists, e.g. "libx264", "h264_amf") is used as
+  /// given or the node fails to start — never fallen back from.
+  std::string encoder;
+
   bool enabled = true;
 };
 

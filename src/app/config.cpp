@@ -39,6 +39,7 @@ bool parseNode(const json::Value& v, size_t index, NodeConfig* out,
   out->interfaceSelector = v["interface"].asString();
   out->target = v["target"].asString();
   out->ffmpegPath = v["ffmpeg"].asString();
+  out->encoder = v["encoder"].asString();
 
   if (v.has("crop")) {
     const json::Value& c = v["crop"];

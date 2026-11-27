@@ -124,8 +124,47 @@ usual locations; **an explicit path that's wrong is an ERROR, never a fallback**
 Chosen over linking because libavcodec's structs shift between majors (far more
 fragile than the flat NDI/OMT/libsrt ABIs), it keeps ffmpeg's GPL in its own
 process, and CI has nothing to detect. Prefers hardware encoders —
-picks `h264_videotoolbox` over `libx264` here. `core/subprocess.*` is POSIX-only;
-**Windows needs CreateProcess + overlapped pipes and is NOT implemented**.
+picks `h264_videotoolbox` over `libx264` here — but **only one that passes a
+one-frame trial encode** (see below).
+
+**SRT RUNS ON WINDOWS** (2026-11-27, winlab only, in no release yet).
+`core/subprocess.cpp` has a `CreateProcessW` path: anonymous pipes (NOT
+overlapped) read by two threads into a 4 MB ring, so `read()` can time out;
+stderr drained continuously (newest 64 KB kept) so a chatty ffmpeg never blocks.
+`PROC_THREAD_ATTRIBUTE_HANDLE_LIST` hands the child its own three pipe ends and
+nothing else; `CREATE_NO_WINDOW`; MSVC CRT quoting (`windowsCommandLine`, tested).
+The run: ffmpeg n8.1 (BtbN gpl, its own libsrt) `-re -c copy` a 720p30 counter
+card into `srt://…:9721` listener -> decode -> NDI "FFWIN SRT" -> `vdbench
+probe` (separate process) AND -> listener :9722 encoded with libx264 -> ffmpeg
+`-c copy -t 30` to a .ts, judged on the Mac with vdbench's rules. Two 40 s
+runs: received 1201 frames @ 30.0 fps, 1147/906 new; sent 889/886 card frames,
+839/666 new; 0 backwards, upright, bars within 1 level both ways; 9837
+packets, 0 lost/retransmitted/dropped. Repeats always matched by skips
+(arrival jitter vs the tick); why run 2 had five times as many: unknown.
+
+Traps from it:
+- **The encoder LISTING proves nothing.** BtbN's build lists `h264_nvenc` and
+  `h264_qsv` on a GPU-less VM; they fail with "Cannot load nvcuda.dll" and
+  "Error creating a MFX session: -9.". `Ffmpeg::pickH264Encoder` trial-encodes
+  one black UYVY frame with the sink's own argument builder to `-f null -`;
+  exit 0 is the proof; failures are logged with ffmpeg's reason. A node's
+  explicit `"encoder"` is used as given and never fallen back from.
+- **`readExactly` LOST A PARTIAL RECORD at its deadline** — on both platforms,
+  seen only on winlab, once per 40 s window: the stream went out of step by
+  the lost bytes (`bad.bmp` was rolled exactly 256 rows), then realigned at
+  the next inter-frame gap. Now the deadline is for a record to BEGIN; a begun
+  record is finished, allowing the child 2 s more.
+- **Pipe ends must not leak into later children.** A later child holding an
+  earlier child's stdin write end = no EOF, ffmpeg never finishes. POSIX had
+  the hole too: every pipe fd is now `FD_CLOEXEC` under a spawn mutex.
+- **libsrt on Windows crashes at exit (0xC0000409) unless `srt_cleanup()` runs
+  first** — `atexit` in `srt_socket.cpp`. `Dylib::close` also no longer
+  FreeLibrary()s during static destruction; that alone did NOT fix it.
+- **SRT receive takes ~6 s to its first picture** ("N bytes in, 0 frames out")
+  — ffmpeg's input probing, same on macOS and on main before this. Not fixed.
+- winlab: `vdbench probe` looks for the NDI source ONCE for 2 s — retry on "no
+  NDI receiver" only. It saves `%TEMP%\ffvd\bad.bmp` only if that folder
+  exists. The kit is `C:\build\ffx` (srt.dll + OpenSSL DLLs beside the exe).
 
 **TWO COLOUR BUGS FOUND BY SRT SEND — both left hues and bar ORDER perfect while
 values were wrong, which reads as "nearly working":**

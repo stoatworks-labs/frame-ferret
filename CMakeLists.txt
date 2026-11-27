@@ -216,3 +216,13 @@ foreach(t router rational pixel_format interfaces convert config engine web_asse
   target_compile_definitions(test_${t} PRIVATE FERRET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME ${t} COMMAND test_${t})
 endforeach()
+
+# Tests that start themselves again as the child process — an echo/exit child
+# for the subprocess layer, a fake ffmpeg for the encoder pick — so the real
+# posix_spawn / CreateProcess path runs on every CI runner, none of which has
+# an ffmpeg. They are handed their own full path, which argv[0] is not.
+foreach(t subprocess ffmpeg)
+  add_executable(test_${t} tests/test_${t}.cpp)
+  target_link_libraries(test_${t} PRIVATE ferret_core)
+  add_test(NAME ${t} COMMAND test_${t} $<TARGET_FILE:test_${t}>)
+endforeach()

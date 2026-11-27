@@ -21,6 +21,65 @@ namespace {
 /// conversion at both ends for nothing.
 constexpr PixelFormat kPipeFormat = PixelFormat::uyvy8;
 
+/// A serviceable default for the raster and rate, when none was configured.
+/// Roughly 0.1 bits per pixel per second, which is a normal contribution
+/// bitrate for H.264 at these sizes.
+int64_t defaultBitrateBps(const NodeConfig& config) {
+  const double pixels = static_cast<double>(config.width) * config.height;
+  const double bps = pixels * config.rate.approx() * 0.1;
+  // Clamped so a tiny raster still gets something usable and a large one
+  // does not ask for more than a link is likely to carry.
+  const double clamped = bps < 500000.0 ? 500000.0
+                         : (bps > 20000000.0 ? 20000000.0 : bps);
+  return static_cast<int64_t>(clamped);
+}
+
+/// The link's statistics, kept fresh while it is up, and one line about them
+/// when it closes: how much crossed it, and whether any of it was lost for
+/// good. "Dropped" is the number that matters — those packets never reached
+/// the decoder, and each hole is a damaged picture downstream.
+///
+/// Sampled rather than read at the end because libsrt reports nothing for a
+/// broken socket, and a broken link is exactly when the numbers are wanted.
+class LinkStats {
+ public:
+  void sample(const SrtConnection& connection) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_) return;
+    next_ = now + std::chrono::seconds(1);
+    const SrtConnection::Stats s = connection.stats();
+    if (s.packetsSent > 0 || s.packetsReceived > 0) {
+      last_ = s;
+      have_ = true;
+    }
+  }
+
+  void reportClosed(const SrtConnection& connection, bool sending) {
+    next_ = {};
+    sample(connection);
+    if (!have_) {
+      std::fprintf(stderr, "srt: %s closed\n", connection.describe().c_str());
+    } else {
+      std::fprintf(stderr,
+                   "srt: %s closed: %lld packets %s, %lld lost and %lld "
+                   "retransmitted, %lld dropped too late\n",
+                   connection.describe().c_str(),
+                   static_cast<long long>(sending ? last_.packetsSent
+                                                  : last_.packetsReceived),
+                   sending ? "sent" : "received",
+                   static_cast<long long>(last_.packetsLost),
+                   static_cast<long long>(last_.packetsRetransmitted),
+                   static_cast<long long>(last_.packetsDropped));
+    }
+    *this = LinkStats();
+  }
+
+ private:
+  SrtConnection::Stats last_;
+  bool have_ = false;
+  std::chrono::steady_clock::time_point next_{};
+};
+
 class SrtSource final : public Source {
  public:
   SrtSource(NodeConfig config, SrtConfig srt, std::string ffmpegPath)
@@ -114,11 +173,29 @@ class SrtSource final : public Source {
 
   void close() {
     if (codec_) {
+      reportDecoderErrors();
       codec_->stop();
       codec_.reset();
     }
+    if (connection_) linkStats_.reportClosed(*connection_, false);
     connection_.reset();
     connected_.store(false);
+  }
+
+  /// What the decoder complained about since the last report, as one line.
+  /// After the first frame this is the only way a damaged stream shows up: a
+  /// dropped packet becomes "concealing 812 errors" on ffmpeg's stderr and a
+  /// smeared picture on every output, and nothing else in the log.
+  void reportDecoderErrors() {
+    const std::string errors = codec_ ? codec_->drainErrors() : std::string();
+    if (errors.empty()) return;
+    size_t lines = 0;
+    for (const char c : errors) lines += c == '\n';
+    const std::string first = Ffmpeg::summariseError(errors);
+    std::fprintf(stderr, "srt: decoder reports: %s%s\n", first.c_str(),
+                 lines > 1 ? (" (and " + std::to_string(lines - 1) +
+                              " more lines)").c_str()
+                           : "");
   }
 
   void pump() {
@@ -142,6 +219,8 @@ class SrtSource final : public Source {
         fed = true;
       }
 
+      linkStats_.sample(*connection_);
+
       // Drain. Whole frames only — a partial read is a torn picture, not a
       // short one.
       while (codec_->readExactly(frame.data(), frameBytes_, fed ? 5 : 20)) {
@@ -155,6 +234,10 @@ class SrtSource final : public Source {
       // decoder refusing it, or the decoder never being fed — and this is what
       // tells them apart.
       const auto now = std::chrono::steady_clock::now();
+      if (framesOut_ > 0 && now - lastReport_ > std::chrono::seconds(2)) {
+        lastReport_ = now;
+        reportDecoderErrors();
+      }
       if (framesOut_ == 0 && now - lastReport_ > std::chrono::seconds(2)) {
         lastReport_ = now;
         const std::string errors = codec_->drainErrors();
@@ -212,6 +295,7 @@ class SrtSource final : public Source {
 
   std::unique_ptr<SrtConnection> connection_;
   std::unique_ptr<Subprocess> codec_;
+  LinkStats linkStats_;
 
   std::thread worker_;
   std::atomic<bool> stopping_{false};
@@ -329,56 +413,25 @@ class SrtSink final : public Sink {
       return false;
     }
 
+    // Everything up to the muxer comes from the same builder the encoder
+    // trial used, so the command that runs here is the one that was proven
+    // to open when this node was made.
+    H264Encode encode;
+    encode.encoder = encoder_;
+    encode.width = config_.width;
+    encode.height = config_.height;
+    encode.rate = config_.rate;
+    encode.bitrateBps = bitrateBps();
+    std::vector<std::string> arguments = Ffmpeg::h264EncodeArguments(encode);
+
     // -muxrate and -pcr_period are not decoration. A live TS with no fixed mux
     // rate emits PCRs irregularly, and hardware decoders lock badly or not at
     // all on a stream whose clock wanders.
-    const std::string rate = std::to_string(config_.rate.num) + "/" +
-                             std::to_string(config_.rate.den);
-
-    // Tag the colour space explicitly, on the input and again on the output.
-    //
-    // rawvideo carries no colorimetry, so ffmpeg guesses from the raster —
-    // **BT.601 below 720 lines, BT.709 at or above**. Send it 709 data at
-    // 640x360 without saying so and it encodes as 601: white and black stay
-    // exactly right while saturated colours skew, green high and red low. That
-    // reads as "nearly working", which is the worst way for a colour fault to
-    // present. The same trap is recorded fleet-wide for ffmpeg's rgb24 handling.
-    //
-    // The rule below is the one the NDI and OMT receivers already use to infer
-    // an untagged source, so every path in this program agrees.
-    const bool hd = config_.height >= 720;
-    const char* space = hd ? "bt709" : "smpte170m";
-    const char* primaries = hd ? "bt709" : "smpte170m";
-
-    const std::vector<std::string> arguments = {
-        "-hide_banner", "-loglevel", "error",
-        "-f", "rawvideo",
-        "-pix_fmt", "uyvy422",
-        "-colorspace", space,
-        "-color_primaries", primaries,
-        "-color_trc", "bt709",
-        "-color_range", "mpeg",
-        "-s", std::to_string(config_.width) + "x" +
-                  std::to_string(config_.height),
-        "-r", rate,
-        "-i", "pipe:0",
-        "-an",
-        "-c:v", encoder_,
-        "-b:v", std::to_string(bitrateBps()),
-        // One keyframe a second. A decoder joining mid-stream shows nothing
-        // until the next one, so a long GOP is a long black hold on connect.
-        "-g", std::to_string((config_.rate.num + config_.rate.den - 1) /
-                             config_.rate.den),
-        "-pix_fmt", "yuv420p",
-        "-colorspace", space,
-        "-color_primaries", primaries,
-        "-color_trc", "bt709",
-        "-color_range", "mpeg",
-        "-f", "mpegts",
-        "-muxrate", std::to_string(bitrateBps() * 5 / 4),
-        "-pcr_period", "20",
-        "pipe:1",
-    };
+    arguments.insert(arguments.end(),
+                     {"-f", "mpegts",
+                      "-muxrate", std::to_string(bitrateBps() * 5 / 4),
+                      "-pcr_period", "20",
+                      "pipe:1"});
 
     std::string spawnError;
     codec_ = spawnSubprocess(ffmpeg_, arguments, spawnError);
@@ -399,21 +452,11 @@ class SrtSink final : public Sink {
       codec_->stop();
       codec_.reset();
     }
+    if (connection_) linkStats_.reportClosed(*connection_, true);
     connection_.reset();
   }
 
-  /// A serviceable default for the raster and rate, when none was configured.
-  /// Roughly 0.1 bits per pixel per second, which is a normal contribution
-  /// bitrate for H.264 at these sizes.
-  int64_t bitrateBps() const {
-    const double pixels = static_cast<double>(config_.width) * config_.height;
-    const double bps = pixels * config_.rate.approx() * 0.1;
-    // Clamped so a tiny raster still gets something usable and a large one
-    // does not ask for more than a link is likely to carry.
-    const double clamped = bps < 500000.0 ? 500000.0
-                           : (bps > 20000000.0 ? 20000000.0 : bps);
-    return static_cast<int64_t>(clamped);
-  }
+  int64_t bitrateBps() const { return defaultBitrateBps(config_); }
 
   void pump() {
     std::vector<uint8_t> ts(SrtConnection::kDefaultPayloadSize);
@@ -460,6 +503,7 @@ class SrtSink final : public Sink {
         }
       }
 
+      linkStats_.sample(*connection_);
       if (!codec_->running()) {
         reportCodecFailure();
         return;
@@ -491,6 +535,7 @@ class SrtSink final : public Sink {
 
   std::unique_ptr<SrtConnection> connection_;
   std::unique_ptr<Subprocess> codec_;
+  LinkStats linkStats_;
 
   std::thread worker_;
   std::atomic<bool> stopping_{false};
@@ -509,12 +554,6 @@ class SrtSink final : public Sink {
 
 std::unique_ptr<Source> makeSrtSource(const NodeConfig& config,
                                       std::string& error) {
-  if (!Ffmpeg::supportedOnThisPlatform()) {
-    error =
-        "SRT needs an external codec, and running one is not implemented on "
-        "this platform yet";
-    return nullptr;
-  }
   if (!SrtRuntime::available()) {
     error = SrtRuntime::unavailableReason();
     return nullptr;
@@ -551,12 +590,6 @@ std::unique_ptr<Source> makeSrtSource(const NodeConfig& config,
 
 std::unique_ptr<Sink> makeSrtSink(const NodeConfig& config,
                                   std::string& error) {
-  if (!Ffmpeg::supportedOnThisPlatform()) {
-    error =
-        "SRT needs an external codec, and running one is not implemented on "
-        "this platform yet";
-    return nullptr;
-  }
   if (!SrtRuntime::available()) {
     error = SrtRuntime::unavailableReason();
     return nullptr;
@@ -582,15 +615,26 @@ std::unique_ptr<Sink> makeSrtSink(const NodeConfig& config,
     return nullptr;
   }
 
-  const std::string encoder = Ffmpeg::bestH264Encoder(ffmpeg);
-  if (encoder.empty()) {
-    error = "the ffmpeg at " + ffmpeg +
-            " has no H.264 encoder this build knows how to drive (looked for "
-            "h264_videotoolbox, h264_nvenc, h264_qsv, libx264, h264_v4l2m2m)";
+  // Each candidate is proven with a one-frame encode at this node's own raster,
+  // rate and bitrate before it is chosen: `-encoders` lists what ffmpeg was
+  // built with, not what this machine can open, and an NVENC that cannot open
+  // would otherwise be found only as an encoder that dies on every connect.
+  H264Encode settings;
+  settings.width = config.width;
+  settings.height = config.height;
+  settings.rate = config.rate;
+  settings.bitrateBps = defaultBitrateBps(config);
+  const EncoderPick pick =
+      Ffmpeg::pickH264Encoder(ffmpeg, config.encoder, settings);
+  for (const auto& line : pick.skipped) {
+    std::fprintf(stderr, "srt: %s\n", line.c_str());
+  }
+  if (pick.encoder.empty()) {
+    error = "the ffmpeg at " + ffmpeg + ": " + pick.error;
     return nullptr;
   }
 
-  return std::make_unique<SrtSink>(config, srt, ffmpeg, encoder);
+  return std::make_unique<SrtSink>(config, srt, ffmpeg, pick.encoder);
 }
 
 }  // namespace ferret
