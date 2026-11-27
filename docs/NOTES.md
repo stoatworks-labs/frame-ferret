@@ -127,7 +127,7 @@ process, and CI has nothing to detect. Prefers hardware encoders —
 picks `h264_videotoolbox` over `libx264` here — but **only one that passes a
 one-frame trial encode** (see below).
 
-**SRT RUNS ON WINDOWS** (2026-11-27, winlab only, in no release yet).
+**SRT RUNS ON WINDOWS** (2026-11-27, winlab only; released in v0.5.0).
 `core/subprocess.cpp` has a `CreateProcessW` path: anonymous pipes (NOT
 overlapped) read by two threads into a 4 MB ring, so `read()` can time out;
 stderr drained continuously (newest 64 KB kept) so a chatty ffmpeg never blocks.

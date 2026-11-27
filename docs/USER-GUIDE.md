@@ -72,7 +72,7 @@ fault, and that's an expensive hour. Every node takes an interface.
 |---|---|
 | **NDI send and receive** | Verified against an independent implementation, both directions. |
 | **OMT send and receive** | Verified against oxbow and macOS's own `dns-sd`. On Windows, run both ways against a separate OMT implementation on a Mac. |
-| **SRT send and receive** | Verified end to end on macOS against an independent Rust SRT stack. Run on a Windows VM against ffmpeg's own libsrt: 40-second runs both ways, no frame out of order, bars within 1 level. Not in a release for Windows yet. On Linux it's built and unit-tested, never run. |
+| **SRT send and receive** | Verified end to end on macOS against an independent Rust SRT stack. Run on a Windows VM against ffmpeg's own libsrt: 40-second runs both ways, no frame out of order, bars within 1 level. On Windows since v0.5.0. On Linux it's built and unit-tested, never run. |
 | **ST 2110-20 send and receive** | Verified against GStreamer's RFC 4175 implementation, within 2 code values. |
 | **DeckLink output** | Run on a real Duo 2 at 1080p50 in v210. |
 | **Screen, window, application and region capture** (macOS) | Built and run. A region of interest is a source rect, so a crop costs nothing. |

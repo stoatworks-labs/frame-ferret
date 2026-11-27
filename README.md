@@ -69,7 +69,7 @@ grows.
 | **NDI send and receive** | **Built and verified against a separate implementation.** Runtime-loaded, never linked |
 | **OMT send and receive** | **Built and verified**, against oxbow and macOS `dns-sd`. Runtime-loaded. On Windows, run both ways against a separate OMT implementation on a Mac — see below |
 | **SRT transport** | **Built and proven over loopback** — caller/listener, real interface binding, latency, passphrase, stream id. The SRT node built on it is in the next two rows |
-| **SRT receive (decode)** | **Built and verified end to end on macOS** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Run on Windows too**, on a GPU-less Windows 11 VM, fed by ffmpeg's own libsrt: two 40-second runs read by a separate process, 1201 frames each at 30.0 fps, no frame out of order, bars within 1 level. On Linux it's built and unit-tested in CI, never run |
+| **SRT receive (decode)** | **Built and verified end to end on macOS** against an independent Rust SRT sender — all seven SMPTE bars decoded correctly. **Run on Windows too**, since v0.5.0, on a GPU-less Windows 11 VM, fed by ffmpeg's own libsrt: two 40-second runs read by a separate process, 1201 frames each at 30.0 fps, no frame out of order, bars within 1 level. On Linux it's built and unit-tested in CI, never run |
 | **SRT send (encode)** | **Built and verified end to end on macOS** — all eight bars within 2 code values through H.264, read back by independent tools. **Run on the same Windows VM**: encoded with `libx264`, recorded by ffmpeg's own libsrt, no frame out of order, bars within 1 level, 9837 packets sent and none lost. On Linux, CI only |
 | **External codec via ffmpeg** | **Built and verified, on macOS and Windows.** Points at an install you already have; nothing linked, nothing bundled. An encoder has to open a one-frame trial before it's chosen, so a listed GPU encoder with no GPU behind it is skipped |
 | **DeckLink output** | **Run on a real Duo 2**: 1080p50 in v210, 2531 frames with **0 late and 0 dropped** by the card's own count. Pixels on the wire not yet checked — that needs an SDI loop cable |
@@ -171,8 +171,8 @@ values were wrong, which is the sneakiest way a colour fault can show up:
   black stayed exact. Both input and output are now tagged explicitly.
 
 **SRT on Windows, run on a VM.** Up to v0.4.0 the ffmpeg subprocess was POSIX-only, and an SRT
-node on Windows refused to build. It now runs ffmpeg with `CreateProcess` and pipes; that isn't in
-a release yet. It was run on the GPU-less Windows 11 VM used for the virtual display, all on one
+node on Windows refused to build. Since v0.5.0 it runs ffmpeg with `CreateProcess` and
+pipes. It was run on the GPU-less Windows 11 VM used for the virtual display, all on one
 machine over loopback, with ffmpeg 8.1's own libsrt at both ends. ffmpeg sent a 720p30 recording of a frame-counter card into
 an SRT listener. Frame Ferret decoded it and sent it out twice: over NDI, read by a probe in a
 separate process, and over a second SRT listener, encoded with `libx264` and recorded by ffmpeg
