@@ -303,16 +303,16 @@ everything downstream:
 
 ## Download
 
-**[v0.4.0](https://github.com/stoatworks-labs/frame-ferret/releases/tag/v0.4.0)** — prebuilt for macOS, Windows and Linux. Pick your platform:
+**[v0.5.0](https://github.com/stoatworks-labs/frame-ferret/releases/tag/v0.5.0)** — prebuilt for macOS, Windows and Linux. Pick your platform:
 
 <details>
 <summary><b>macOS</b> — Universal (Apple Silicon + Intel)</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Universal (Apple Silicon + Intel) · .dmg disk image | [`frame-ferret-0.4.0-macos-universal.dmg`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/frame-ferret-0.4.0-macos-universal.dmg) | 8.5 MB |
-| Universal (Apple Silicon + Intel) · .pkg installer | [`frame-ferret-0.4.0-macos-universal.pkg`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/frame-ferret-0.4.0-macos-universal.pkg) | 8.5 MB |
-| Universal (Apple Silicon + Intel) · .zip archive | [`frame-ferret-0.4.0-macos-universal.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/frame-ferret-0.4.0-macos-universal.zip) | 546 KB |
+| Universal (Apple Silicon + Intel) · .dmg disk image | [`frame-ferret-0.5.0-macos-universal.dmg`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/frame-ferret-0.5.0-macos-universal.dmg) | 8.5 MB |
+| Universal (Apple Silicon + Intel) · .pkg installer | [`frame-ferret-0.5.0-macos-universal.pkg`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/frame-ferret-0.5.0-macos-universal.pkg) | 8.5 MB |
+| Universal (Apple Silicon + Intel) · .zip archive | [`frame-ferret-0.5.0-macos-universal.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/frame-ferret-0.5.0-macos-universal.zip) | 570 KB |
 
 </details>
 
@@ -321,8 +321,8 @@ everything downstream:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`Frame.Ferret_0.4.0_x64-setup.exe`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/Frame.Ferret_0.4.0_x64-setup.exe) | 2.8 MB |
-| x64 · .zip archive | [`frame-ferret-0.4.0-windows-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/frame-ferret-0.4.0-windows-x86_64.zip) | 262 KB |
+| x64 · .exe installer | [`Frame.Ferret_0.5.0_x64-setup.exe`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/Frame.Ferret_0.5.0_x64-setup.exe) | 2.8 MB |
+| x64 · .zip archive | [`frame-ferret-0.5.0-windows-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/frame-ferret-0.5.0-windows-x86_64.zip) | 282 KB |
 
 </details>
 
@@ -331,9 +331,9 @@ everything downstream:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .deb package (Debian/Ubuntu) | [`Frame.Ferret_0.4.0_amd64.deb`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/Frame.Ferret_0.4.0_amd64.deb) | 5.7 MB |
-| x64 · .rpm package (Fedora/RHEL) | [`Frame.Ferret-0.4.0-1.x86_64.rpm`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/Frame.Ferret-0.4.0-1.x86_64.rpm) | 5.7 MB |
-| x64 · .zip archive | [`frame-ferret-0.4.0-linux-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.4.0/frame-ferret-0.4.0-linux-x86_64.zip) | 443 KB |
+| x64 · .deb package (Debian/Ubuntu) | [`Frame.Ferret_0.5.0_amd64.deb`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/Frame.Ferret_0.5.0_amd64.deb) | 5.7 MB |
+| x64 · .rpm package (Fedora/RHEL) | [`Frame.Ferret-0.5.0-1.x86_64.rpm`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/Frame.Ferret-0.5.0-1.x86_64.rpm) | 5.7 MB |
+| x64 · .zip archive | [`frame-ferret-0.5.0-linux-x86_64.zip`](https://github.com/stoatworks-labs/frame-ferret/releases/download/v0.5.0/frame-ferret-0.5.0-linux-x86_64.zip) | 466 KB |
 
 </details>
 
